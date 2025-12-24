@@ -8,6 +8,7 @@ import { updateLeaderboard } from "../../services/leaderboard.service";
 export const startVerdictConsumer = () => {
     const worker = new Worker("leaderboard-queue", async (job) => {
 
+        console.log("Data from the quue: ",job.data)
         const { contestId, userId, score, timeTakenInMs } = job.data;
         if(!contestId || !userId || score === undefined || timeTakenInMs === undefined){
             throw new Error("Invalid job data");

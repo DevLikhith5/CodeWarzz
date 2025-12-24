@@ -26,6 +26,7 @@ export interface SandboxResult {
   total: number;
   timeTakenMs: number;
   error?: string;
+  lastExecutedTestCase?: Testcase;
 }
 
 export function runSandbox({
@@ -65,6 +66,7 @@ export function runSandbox({
         return {
           verdict: "TLE",
           passed,
+          lastExecutedTestCase : tc,
           total: testcases.length,
           timeTakenMs: elapsed,
         };
@@ -74,16 +76,18 @@ export function runSandbox({
 
       let output: string;
       try {
-        output = execute(
+        output = execute(   
           workspace,
           lang,
           constraints,
           remainingTime
         );
       } catch (err: any) {
+        console.log(`Error in executing testcase due to run time error at ${JSON.stringify(tc)}`)
         return {
           verdict: err.message as any,
           passed,
+          lastExecutedTestCase : tc,
           total: testcases.length,
           timeTakenMs: Date.now() - startTime,
         };
@@ -93,6 +97,7 @@ export function runSandbox({
         return {
           verdict: "WA",
           passed,
+          lastExecutedTestCase : tc,
           total: testcases.length,
           timeTakenMs: Date.now() - startTime,
         };

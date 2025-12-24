@@ -127,6 +127,6 @@ int main(){
         }
     });
 
-    console.log("🔥 Binary Search job pushed");
+    console.log("Binary Search job pushed");
     process.exit(0);
 })();

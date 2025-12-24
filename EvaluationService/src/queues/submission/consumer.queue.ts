@@ -45,6 +45,8 @@ export const startSubmissionConsumer = () => {
         constraints,
       });
 
+      console.log(result)
+
 
       const evaluationResult = {
         submissionId,
@@ -52,6 +54,7 @@ export const startSubmissionConsumer = () => {
         contestId,
         verdict: result.verdict,
         passed: result.passed,
+        lastExecutedTestCase: result.lastExecutedTestCase,
         total: result.total,
         timeTakenMs: result.timeTakenMs,
       };

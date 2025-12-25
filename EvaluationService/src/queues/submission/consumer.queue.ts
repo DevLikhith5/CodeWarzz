@@ -3,25 +3,7 @@ import { getRedisConnObject } from "../../config/redis.config";
 import { runSandbox } from "../../sandbox/runSandbox";
 import { pushToLeaderboardQueue } from "../verdict/leaderboard.producer";
 
-export type SubmissionJob = {
 
-    submissionId: string;
-    userId: string;
-    contestId: string;
-    language: "cpp" | "python" | "javascript" | "java";
-    code: string;
-    testcases: {
-        input: string;
-        output: string;
-    }[];
-    constraints: {
-        timeLimitMs: number;
-        memoryLimitMb: number;
-        cpuLimit: number;
-    };
-
-
-}
 
 export const startSubmissionConsumer = () => {
   const worker = new Worker(
@@ -36,6 +18,8 @@ export const startSubmissionConsumer = () => {
         testcases,
         constraints,
       } = job.data;
+
+      console.log("Recieved Data for Submission ", job.data)
 
 
       const result = runSandbox({
@@ -61,16 +45,16 @@ export const startSubmissionConsumer = () => {
 
 
 
-if (result.verdict === "AC") {
-  await pushToLeaderboardQueue({
-    submissionId: job.data.submissionId,
-    contestId: job.data.contestId,
-    userId: job.data.userId,
-    score: 100,                 
-    timeTakenInMs: result.timeTakenMs,
-  });
-  console.log("PUSHED TO LEADERBOARD QUEUE")
-}
+    if (result.verdict === "AC") {
+    await pushToLeaderboardQueue({
+        submissionId: job.data.submissionId,
+        contestId: job.data.contestId,
+        userId: job.data.userId,
+        score: 100,                 
+        timeTakenInMs: result.timeTakenMs,
+    });
+    console.log("PUSHED TO LEADERBOARD QUEUE")
+    }
 
       // Return result (BullMQ stores this as job result)
       // Later we can:

@@ -7,6 +7,7 @@ export const verdictEnum = pgEnum("verdict", [
   "MLE",
   "RE",
   "CE",
+  "PENDING",
 ]);
 
 export const languageEnum = pgEnum("language", [

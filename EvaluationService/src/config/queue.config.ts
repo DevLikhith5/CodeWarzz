@@ -11,3 +11,14 @@ export const getSubmissionQueue = () => {
   }
   return submissionQueue;
 };
+
+let schedulerQueue: Queue | null = null;
+
+export const getSchedulerQueue = () => {
+  if (!schedulerQueue) {
+    schedulerQueue = new Queue("scheduler-queue", {
+      connection: getRedisConnObject(),
+    });
+  }
+  return schedulerQueue;
+};

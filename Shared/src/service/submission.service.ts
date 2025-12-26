@@ -1,5 +1,6 @@
 import { submissionRepository, SubmissionInsert } from "../repository/submission.repository";
 import { problemRepository } from "../repository/problem.repository";
+import { contestRepository } from "../repository/contest.repository";
 import { submissionQueue } from "../queues/submission.queue";
 import { BadRequestError } from "../utils/errors/app.error";
 
@@ -8,6 +9,24 @@ export type CreateSubmissionDTO = Omit<SubmissionInsert, 'id' | 'createdAt'>;
 
 export class SubmissionService {
     async submitSolution(data: CreateSubmissionDTO) {
+        // 0. Contest Validation (if applicable)
+        if (data.contestId) {
+            const contest = await contestRepository.getContestById(data.contestId);
+            if (!contest) {
+                throw new BadRequestError("Contest not found");
+            }
+
+            const now = new Date();
+            if (now < contest.startTime || now > contest.endTime) {
+                throw new BadRequestError("Contest is not active");
+            }
+
+            const isRegistered = await contestRepository.isUserRegistered(data.contestId, data.userId);
+            if (!isRegistered) {
+                throw new BadRequestError("User is not registered for this contest");
+            }
+        }
+
         // 1. Save submission to DB
         const submission = await submissionRepository.createSubmission(data);
         const { problemId, userId, contestId, language, code, id: submissionId } = submission;

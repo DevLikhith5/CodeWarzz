@@ -6,6 +6,7 @@ import { appErrorHandler, genericErrorHandler } from './middlewares/error.middle
 import logger from './config/logger.config';
 import { attachCorrelationIdMiddleware } from './middlewares/correlation.middleware';
 import { startSubmissionConsumer } from './queues/submission/consumer.queue';
+import { setupSnapshotCron } from './cron/leaderboardSnapshot.cron';
 
 const app = express();
 
@@ -17,9 +18,10 @@ app.use(express.json());
 
 app.use(attachCorrelationIdMiddleware);
 app.use('/api/v1', v1Router);
-app.use('/api/v2', v2Router); 
+app.use('/api/v2', v2Router);
 
 startSubmissionConsumer();
+setupSnapshotCron();
 
 /**
  * Add the error handler middleware

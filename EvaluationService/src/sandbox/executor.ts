@@ -36,6 +36,13 @@ export function execute(
     if (err.killed) throw new Error("TLE");
     if (err.status === 137) throw new Error("MLE");
 
+    console.error("Execution Error Info:", {
+      status: err.status,
+      signal: err.signal,
+      pid: err.pid,
+      stderr: err.stderr?.toString(),
+      stdout: err.stdout?.toString()
+    });
     console.error("STDERR:", err.stderr?.toString());
     throw new Error("RE");
   }

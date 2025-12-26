@@ -1,13 +1,14 @@
 import { eq } from 'drizzle-orm';
-import  db  from '../config/db';
+import db from '../config/db';
 import { users } from '../db/schema';
 
 export type CreateUserParams = typeof users.$inferInsert;
 
 export class AuthRepository {
     async findUserByEmail(email: string) {
-        const [user] = await db.select().from(users).where(eq(users.email, email)).limit(1);
-        return user;
+        return await db.query.users.findFirst({
+            where: eq(users.email, email)
+        });
     }
 
     async createUser(userData: CreateUserParams) {
@@ -20,8 +21,9 @@ export class AuthRepository {
     }
 
     async findUserByRefreshToken(refreshToken: string) {
-        const [user] = await db.select().from(users).where(eq(users.refreshToken, refreshToken)).limit(1);
-        return user;
+        return await db.query.users.findFirst({
+            where: eq(users.refreshToken, refreshToken)
+        });
     }
 }
 

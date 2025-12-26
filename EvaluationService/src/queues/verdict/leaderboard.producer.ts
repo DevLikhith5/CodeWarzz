@@ -6,7 +6,7 @@ export interface LeaderboardJobPayload {
   contestId: string;
   userId: string;
   score: number;
-  timeTakenInMs: number;
+  contestEndTime?: string | number;
 }
 
 const leaderboardQueue = new Queue("leaderboard-queue", {

@@ -1,8 +1,9 @@
 import { Router } from "express";
-import { snapshotLeaderboard } from "../../controllers/leaderboard.controller";
+import { snapshotLeaderboard, getArchivedLeaderboardController } from "../../controllers/leaderboard.controller";
 
 const leaderboardRouter = Router();
 
 leaderboardRouter.post("/snapshot", snapshotLeaderboard);
+leaderboardRouter.get("/archive/:contestId", getArchivedLeaderboardController);
 
 export default leaderboardRouter;

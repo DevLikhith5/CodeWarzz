@@ -4,12 +4,11 @@
   "main": "index.js",
   "scripts": {
     "start": "ts-node src/server.ts",
-    "dev": "nodemon src/server.ts"
+    "dev:api": "nodemon src/server.ts",
+    "dev:submission-worker": "nodemon --exec ts-node src/workers/submission.worker.ts",
+    "dev:leaderboard-worker": "nodemon --exec ts-node src/workers/leaderboard.worker.ts",
+    "dev:all": "concurrently -n API,SUBMISSION,LEADERBOARD -c blue,green,yellow \"npm run dev:api\" \"npm run dev:submission-worker\" \"npm run dev:leaderboard-worker\""
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "description": "",
   "dependencies": {
     "bullmq": "^5.66.2",
     "dotenv": "^16.4.7",
@@ -23,6 +22,7 @@
   "devDependencies": {
     "@types/express": "^5.0.1",
     "@types/node": "^22.19.3",
+    "concurrently": "^9.2.1",
     "nodemon": "^3.1.9",
     "ts-node": "^10.9.2",
     "typescript": "^5.8.3"

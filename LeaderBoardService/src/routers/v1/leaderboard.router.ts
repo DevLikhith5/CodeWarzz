@@ -6,7 +6,7 @@ const router = Router();
 
 router.post(
   "/update",
-    leaderboardController.upsertLeaderboard
+  leaderboardController.upsertLeaderboard
 );
 
 

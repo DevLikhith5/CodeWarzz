@@ -19,6 +19,9 @@ interface CreateProblemInput {
     stackLimitMb?: number;
 
     testcases: CreateTestcaseInput[];
+    contestId?: string;
+    tags?: string[];
+    hints?: string[];
 }
 
 export class ProblemService {
@@ -36,6 +39,8 @@ export class ProblemService {
             memoryLimitMb: input.memoryLimitMb ?? 256,
             cpuLimit: input.cpuLimit ?? 1,
             stackLimitMb: input.stackLimitMb,
+            tags: input.tags || [],
+            hints: input.hints || []
         };
 
         const testcasesData = input.testcases.map(tc => ({
@@ -44,11 +49,15 @@ export class ProblemService {
             isSample: tc.isSample ?? false
         }));
 
-        return await problemRepository.createProblemWithTestcases(problemData, testcasesData);
+        return await problemRepository.createProblemWithTestcases(problemData, testcasesData, input.contestId);
     }
 
     async getProblem(id: string) {
         return await problemRepository.getProblemById(id);
+    }
+
+    async getAllProblems() {
+        return await problemRepository.getAllProblems();
     }
 }
 

@@ -3,6 +3,7 @@ import { serverConfig } from '.';
 
 
 const connectToRedis = () => {
+    console.log(`Inside Connecting To Redis ${serverConfig.REDIS_URL}`)
     try{
         let connection: Redis;
 

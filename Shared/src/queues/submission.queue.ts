@@ -15,3 +15,8 @@ export const submissionQueue = new Queue(SUBMISSION_QUEUE_NAME, {
         removeOnFail: 500
     }
 });
+
+import { QueueEvents } from 'bullmq';
+export const submissionQueueEvents = new QueueEvents(SUBMISSION_QUEUE_NAME, {
+    connection: getRedisConnObject()
+});

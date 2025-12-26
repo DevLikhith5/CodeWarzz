@@ -1,10 +1,10 @@
-export type Language = "cpp" | "python" | "javascript" | "java";
+export type Language = "cpp" | "python" | "javascript" | "java" | "go" | "rust";
 
 export interface LanguageConfig {
-    image:string;
-    sourceFile:string;
-    compileCommand?:string;
-    runCommand:string;
+  image: string;
+  sourceFile: string;
+  compileCommand?: string;
+  runCommand: string;
 }
 
 export const languageConfig: Record<Language, LanguageConfig> = {
@@ -29,5 +29,17 @@ export const languageConfig: Record<Language, LanguageConfig> = {
     sourceFile: "Main.java",
     compileCommand: "javac Main.java",
     runCommand: "java Main",
+  },
+  go: {
+    image: "go-runner",
+    sourceFile: "solution.go",
+    compileCommand: "go build -o solution solution.go",
+    runCommand: "./solution",
+  },
+  rust: {
+    image: "rust-runner",
+    sourceFile: "solution.rs",
+    compileCommand: "rustc -O -o solution solution.rs",
+    runCommand: "./solution",
   },
 };

@@ -1,6 +1,6 @@
 import db from "../config/db";
 import { submissions } from "../db/schema/submission";
-import { InferInsertModel, eq } from "drizzle-orm";
+import { InferInsertModel, eq, desc, and, SQL } from "drizzle-orm";
 
 export type SubmissionInsert = InferInsertModel<typeof submissions>;
 
@@ -11,7 +11,54 @@ export class SubmissionRepository {
     }
 
     async getSubmissionById(id: string) {
-        const [submission] = await db.select().from(submissions).where(eq(submissions.id, id)).limit(1);
+        return await db.query.submissions.findFirst({
+            where: eq(submissions.id, id),
+            with: {
+                problem: {
+                    columns: {
+                        title: true,
+                        slug: true
+                    }
+                }
+            }
+        });
+    }
+
+    async getSubmissionByProblemId(userId: string, problemId: string) {
+        return await db.query.submissions.findFirst({
+            where: and(eq(submissions.userId, userId), eq(submissions.problemId, problemId)),
+            orderBy: [desc(submissions.createdAt)]
+        });
+    }
+
+    async getSubmissions(filters: { userId?: string, problemId?: string, contestId?: string }, limit: number = 20, offset: number = 0) {
+        const whereClauses: SQL[] = [];
+        if (filters.userId) whereClauses.push(eq(submissions.userId, filters.userId));
+        if (filters.problemId) whereClauses.push(eq(submissions.problemId, filters.problemId));
+        if (filters.contestId) whereClauses.push(eq(submissions.contestId, filters.contestId));
+
+        return await db.query.submissions.findMany({
+            where: and(...whereClauses),
+            limit,
+            offset,
+            orderBy: [desc(submissions.createdAt)],
+            with: {
+                problem: {
+                    columns: {
+                        title: true,
+                        slug: true
+                    }
+                }
+            }
+        });
+    }
+
+    async updateSubmission(id: string, data: Partial<SubmissionInsert>) {
+        const [submission] = await db
+            .update(submissions)
+            .set(data)
+            .where(eq(submissions.id, id))
+            .returning();
         return submission;
     }
 }

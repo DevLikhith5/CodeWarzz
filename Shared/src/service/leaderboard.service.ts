@@ -1,6 +1,6 @@
 import { leaderboardRepository } from "../repository/leaderboard.repository";
 
-const SCORE_MULTIPLIER = 1_000_000;
+const MAX_PENALTY_MINS = 100000;
 
 export const takeLeaderboardSnapshot = async () => {
     const now = new Date();
@@ -21,15 +21,17 @@ export const takeLeaderboardSnapshot = async () => {
         for (let i = 0; i < data.length; i += 2) {
             const userId = data[i];
             const rawScore = Number(data[i + 1]);
-            const score = Math.floor(rawScore / SCORE_MULTIPLIER);
-            const timeTakenMs = Math.abs(rawScore % SCORE_MULTIPLIER);
+
+            // Decimal decoding: Points.FractionalPenalty
+            const points = Math.floor(rawScore);
+            const penaltyMinutes = Math.round((MAX_PENALTY_MINS - (rawScore - points) * MAX_PENALTY_MINS));
             const rank = (i / 2) + 1;
 
             snapshots.push({
                 contestId: contest.id,
                 userId: userId,
-                score: score,
-                timeTakenMs: timeTakenMs,
+                score: points,
+                timeTakenMs: penaltyMinutes,
                 rank: rank,
                 capturedAt: now
             });
@@ -37,8 +39,24 @@ export const takeLeaderboardSnapshot = async () => {
 
         // 4. Insert into database
         if (snapshots.length > 0) {
-            await leaderboardRepository.saveSnapshots(snapshots);
-            console.log(`Saved ${snapshots.length} snapshots for contest ${contest.id}`);
+            try {
+                await leaderboardRepository.saveSnapshots(snapshots);
+                console.log(`Saved ${snapshots.length} snapshots for contest ${contest.id}`);
+            } catch (err) {
+                console.error(`Failed to save snapshots for contest ${contest.id}:`, err);
+            }
         }
     }
+};
+
+export const getArchivedLeaderboard = async (contestId: string) => {
+    const snapshots = await leaderboardRepository.getSnapshotsByContestId(contestId);
+    return snapshots.map(s => ({
+        userId: s.userId,
+        username: (s.user as any)?.username,
+        score: s.score,
+        rank: s.rank,
+        penaltyMinutes: s.timeTakenMs,
+        capturedAt: s.capturedAt
+    }));
 };

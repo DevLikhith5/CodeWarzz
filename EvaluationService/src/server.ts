@@ -4,34 +4,32 @@ import v1Router from './routers/v1/index.router';
 import v2Router from './routers/v2/index.router';
 import { appErrorHandler, genericErrorHandler } from './middlewares/error.middleware';
 import logger from './config/logger.config';
-import { attachCorrelationIdMiddleware } from './middlewares/correlation.middleware';
-import { startSubmissionConsumer } from './queues/submission/consumer.queue';
-import { setupSnapshotCron } from './cron/leaderboardSnapshot.cron';
+import { requestContextMiddleware } from '../../Shared/src/middlewares/requestContext.middleware';
+import { metricsService } from '../../Shared/src/service/metrics.service';
+
 
 const app = express();
 
 app.use(express.json());
 
-/**
- * Registering all the routers and their corresponding routes with out app server object.
- */
-
-app.use(attachCorrelationIdMiddleware);
+app.use(requestContextMiddleware);
 app.use('/api/v1', v1Router);
 app.use('/api/v2', v2Router);
 
-startSubmissionConsumer();
-setupSnapshotCron();
 
-/**
- * Add the error handler middleware
- */
 
+
+app.use(appErrorHandler);
 app.use(appErrorHandler);
 app.use(genericErrorHandler);
 
+app.get("/metrics", async (req, res) => {
+    res.set('Content-Type', metricsService.getRegistry().contentType);
+    res.end(await metricsService.getRegistry().metrics());
+});
 
-app.listen(serverConfig.PORT, () => {
+
+app.listen(serverConfig.PORT, async () => {
     logger.info(`Server is running on http://localhost:${serverConfig.PORT}`);
     logger.info(`Press Ctrl+C to stop the server.`);
 });

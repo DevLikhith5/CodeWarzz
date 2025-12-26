@@ -1,6 +1,5 @@
 import fs from "fs";
 import path from "path";
-import os from "os";
 import crypto from "crypto";
 
 export interface Workspace {
@@ -10,7 +9,7 @@ export interface Workspace {
 
 export function createWorkspace(): Workspace {
   const id = crypto.randomUUID();
-  const dir = path.join(os.tmpdir(), `judge-${id}`);
+  const dir = path.join(process.cwd(), "temp_workspaces", `judge-${id}`);
   fs.mkdirSync(dir, { recursive: true });
   return { id, dir };
 }
@@ -21,6 +20,10 @@ export function writeFile(
   content: string
 ) {
   fs.writeFileSync(path.join(workspace.dir, filename), content);
+}
+
+export function readFile(workspace: Workspace, filename: string): string {
+  return fs.readFileSync(path.join(workspace.dir, filename), "utf8");
 }
 
 export function cleanupWorkspace(workspace: Workspace) {

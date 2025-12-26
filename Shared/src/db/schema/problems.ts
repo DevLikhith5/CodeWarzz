@@ -6,6 +6,7 @@ import {
   integer,
   boolean,
   timestamp,
+  json,
 } from "drizzle-orm/pg-core";
 import { difficultyEnum } from "./enums";
 
@@ -23,6 +24,9 @@ export const problems = pgTable("problems", {
   cpuLimit: integer("cpu_limit").default(1).notNull(),
 
   stackLimitMb: integer("stack_limit_mb"),
+
+  tags: json("tags").$type<string[]>().default([]),
+  hints: json("hints").$type<string[]>().default([]),
 
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),

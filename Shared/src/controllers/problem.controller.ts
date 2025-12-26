@@ -2,17 +2,25 @@ import { Request, Response, NextFunction } from 'express';
 import { problemService } from '../service/problem.service';
 import { StatusCodes } from 'http-status-codes';
 
+import { successResponse } from '../utils/response';
+
 export const createProblemController = async (req: Request, res: Response, next: NextFunction) => {
     try {
         const problem = await problemService.createProblem(req.body);
-        res.status(StatusCodes.CREATED).json({
-            message: 'Problem created successfully',
-            problemId: problem.id
-        });
+        successResponse(res, { problemId: problem.id }, 'Problem created successfully', StatusCodes.CREATED);
     } catch (error) {
         next(error);
     }
 };
+
+export const getProblemsController = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        const problems = await problemService.getAllProblems();
+        successResponse(res, problems);
+    } catch (error) {
+        next(error);
+    }
+}
 
 export const getProblemController = async (req: Request, res: Response, next: NextFunction) => {
     try {
@@ -22,7 +30,7 @@ export const getProblemController = async (req: Request, res: Response, next: Ne
             res.status(StatusCodes.NOT_FOUND).json({ message: 'Problem not found' });
             return;
         }
-        res.status(StatusCodes.OK).json(problem);
+        successResponse(res, problem);
     } catch (error) {
         next(error);
     }

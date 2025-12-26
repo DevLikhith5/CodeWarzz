@@ -9,6 +9,9 @@ export function compareOutput(actual: string, expected: string): boolean {
   const a = norm(actual);
   const e = norm(expected);
 
+  console.log("Actual:", a);
+  console.log("Expected:", e);
+
   if (a.length !== e.length) return false;
 
   for (let i = 0; i < a.length; i++) {

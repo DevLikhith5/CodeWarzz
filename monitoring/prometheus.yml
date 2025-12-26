@@ -1,0 +1,23 @@
+global:
+  scrape_interval: 5s
+
+scrape_configs:
+  - job_name: 'api-gateway'
+    metrics_path: '/metrics'
+    static_configs:
+      - targets: ['host.docker.internal:3000']
+
+  - job_name: 'shared-service'
+    metrics_path: '/metrics'
+    static_configs:
+      - targets: ['host.docker.internal:3001']
+
+  - job_name: 'leaderboard-service'
+    metrics_path: '/metrics'
+    static_configs:
+      - targets: ['host.docker.internal:3002']
+
+  - job_name: 'evaluation-service'
+    metrics_path: '/metrics'
+    static_configs:
+      - targets: ['host.docker.internal:3003']

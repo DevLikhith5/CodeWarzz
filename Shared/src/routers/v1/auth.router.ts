@@ -3,10 +3,13 @@ import { signUp, signIn, refreshToken } from '../../controllers/auth.controller'
 
 import { verifyToken } from '../../middlewares/auth.middleware';
 
+import { validate } from '../../middlewares/validate.middleware';
+import { registerSchema, loginSchema } from '../../dtos/auth.dto';
+
 const authRouter = Router();
 
-authRouter.post('/signup', signUp);
-authRouter.post('/signin', signIn);
+authRouter.post('/signup', validate(registerSchema), signUp);
+authRouter.post('/signin', validate(loginSchema), signIn);
 authRouter.post('/refresh', refreshToken);
 authRouter.get('/me', verifyToken, (req, res) => {
     res.status(200).json({ message: 'Authenticated', user: req.user });

@@ -2,36 +2,41 @@ import { getRedisConnObject } from "../config/redis.config";
 
 const redis = getRedisConnObject();
 
-
-const SCORE_MULTIPLIER = 1_000_000;
+const MAX_PENALTY_MINS = 100000;
+const LEADERBOARD_EXPIRY_EXTENSION_MS = 24 * 60 * 60 * 1000;
 
 export interface UpdateLeaderboardInput {
   contestId: string;
   userId: string;
   score: number;
   timeTakenInMs: number;
+  contestEndTime?: string | number;
 }
-
 
 export async function updateLeaderboard({
   contestId,
   userId,
   score,
-  timeTakenInMs,
+  contestEndTime,
 }: UpdateLeaderboardInput) {
   const redisKey = `CodeWarz:Leaderboard:${contestId}`;
 
-  const finalScore = score * SCORE_MULTIPLIER - timeTakenInMs;
+  await redis.zadd(redisKey, score, userId);
 
-  await redis.zadd(redisKey, finalScore, userId);
+  if (contestEndTime) {
+    const endTimeMs = new Date(contestEndTime).getTime();
+    if (!isNaN(endTimeMs)) {
+      const expiryTimeInSeconds = Math.floor((endTimeMs + LEADERBOARD_EXPIRY_EXTENSION_MS) / 1000);
+      await redis.expireat(redisKey, expiryTimeInSeconds);
+    }
+  }
 
   return {
     contestId,
     userId,
-    finalScore,
+    score,
   };
 }
-
 
 export async function getTopLeaderboard(
   contestId: string,
@@ -51,17 +56,20 @@ export async function getTopLeaderboard(
   for (let i = 0; i < data.length; i += 2) {
     const rawScore = Number(data[i + 1]);
 
+    // Decimal decoding: Points.FractionalPenalty
+    const score = Math.floor(rawScore);
+    const penaltyMinutes = Math.round((MAX_PENALTY_MINS - (rawScore - score) * MAX_PENALTY_MINS));
+
     leaderboard.push({
       userId: data[i],
       rawScore,
-      score: Math.floor(rawScore / SCORE_MULTIPLIER),
-      timeTakenInMs: Math.abs(rawScore % SCORE_MULTIPLIER),
+      score,
+      penaltyMinutes,
     });
   }
 
   return leaderboard;
 }
-
 
 export async function getUserRank(
   contestId: string,
@@ -77,11 +85,13 @@ export async function getUserRank(
   }
 
   const rawScore = Number(score);
+  const points = Math.floor(rawScore);
+  const penaltyMinutes = Math.round((MAX_PENALTY_MINS - (rawScore - points) * MAX_PENALTY_MINS));
 
   return {
     userId,
     rank: rank + 1,
-    score: Math.floor(rawScore / SCORE_MULTIPLIER),
-    timeTakenInMs: Math.abs(rawScore % SCORE_MULTIPLIER),
+    score: points,
+    penaltyMinutes,
   };
 }

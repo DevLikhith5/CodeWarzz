@@ -1,15 +1,15 @@
 import { z } from "zod";
 
-export const createSubmissionSchema = z.object({
+export const createSubmissionSchema = {
     body: z.object({
         code: z.string().min(1),
         language: z.string(),
         problemId: z.string().uuid(),
         contestId: z.string().uuid().optional(),
     })
-});
+};
 
-export const runCodeSchema = z.object({
+export const runCodeSchema = {
     body: z.object({
         code: z.string().min(1),
         language: z.string(),
@@ -19,9 +19,9 @@ export const runCodeSchema = z.object({
             output: z.string().optional(),
         })).optional(),
     })
-});
+};
 
-export const updateSubmissionSchema = z.object({
+export const updateSubmissionSchema = {
     params: z.object({
         id: z.string().uuid()
     }),
@@ -37,19 +37,20 @@ export const updateSubmissionSchema = z.object({
         failedOutput: z.string().optional(),
         errorMessage: z.string().optional(),
     })
-});
+};
 
-export const getSubmissionSchema = z.object({
+export const getSubmissionSchema = {
     params: z.object({
         id: z.string().uuid()
     })
-});
+};
 
-export const getSubmissionsSchema = z.object({
+export const getSubmissionsSchema = {
     query: z.object({
         problemId: z.string().uuid().optional(),
         contestId: z.string().uuid().optional(),
         limit: z.string().regex(/^\d+$/).transform(Number).optional(),
         offset: z.string().regex(/^\d+$/).transform(Number).optional(),
+        userId: z.string().uuid().optional() // Useful for filtering
     })
-});
+};

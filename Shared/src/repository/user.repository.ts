@@ -78,6 +78,24 @@ export class UserRepository {
 
         return results;
     }
+
+    async getSolvedWithTags(userId: string) {
+        const results = await db
+            .select({
+                tags: problems.tags
+            })
+            .from(submissions)
+            .innerJoin(problems, eq(submissions.problemId, problems.id))
+            .where(
+                and(
+                    eq(submissions.userId, userId),
+                    eq(submissions.verdict, "AC")
+                )
+            )
+            .groupBy(problems.id); // Group by Primary Key allows selecting other columns
+
+        return results;
+    }
 }
 
 export const userRepository = new UserRepository();

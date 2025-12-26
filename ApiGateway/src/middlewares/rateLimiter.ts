@@ -3,13 +3,47 @@ import redis from "../config/redis";
 
 interface RateLimitConfig {
     maxTokens: number;
-    refillRate: number; 
+    refillRate: number;
 }
 
 const DEFAULT_CONFIG: RateLimitConfig = {
     maxTokens: 10,
-    refillRate: 10 / 60, 
+    refillRate: 10 / 60,
 };
+
+
+const RATE_LIMIT_SCRIPT = `
+local key = KEYS[1]
+local maxTokens = tonumber(ARGV[1])
+local refillRate = tonumber(ARGV[2])
+local now = tonumber(ARGV[3])
+
+local currentTokens = maxTokens
+local lastRefill = now
+
+local data = redis.call("GET", key)
+if data then
+    local decoded = cjson.decode(data)
+    currentTokens = decoded.tokens
+    lastRefill = decoded.lastRefill
+    
+    local elapsed = now - lastRefill
+    if elapsed > 0 then
+        local added = elapsed * refillRate
+        currentTokens = math.min(maxTokens, currentTokens + added)
+        lastRefill = now
+    end
+end
+
+if currentTokens >= 1 then
+    currentTokens = currentTokens - 1
+    local newState = cjson.encode({tokens=currentTokens, lastRefill=lastRefill})
+    redis.call("SET", key, newState, "EX", 3600)
+    return currentTokens
+else
+    return -1
+end
+`;
 
 export const rateLimiter = (config: RateLimitConfig = DEFAULT_CONFIG) => {
     return async (req: Request, res: Response, next: NextFunction) => {
@@ -18,27 +52,13 @@ export const rateLimiter = (config: RateLimitConfig = DEFAULT_CONFIG) => {
 
         try {
             const now = Math.floor(Date.now() / 1000);
-            const data = await redis.get(key);
 
-            let bucket;
-            if (data) {
-                bucket = JSON.parse(data);
-                const elapsed = now - bucket.lastRefill;
-                const addedTokens = elapsed * config.refillRate;
-                bucket.tokens = Math.min(config.maxTokens, bucket.tokens + addedTokens);
-                bucket.lastRefill = now;
-            } else {
-                bucket = {
-                    tokens: config.maxTokens,
-                    lastRefill: now,
-                };
-            }
+            // @ts-ignore - ioredis supports eval
+            const result = await redis.eval(RATE_LIMIT_SCRIPT, 1, key, config.maxTokens, config.refillRate, now);
 
-            if (bucket.tokens >= 1) {
-                bucket.tokens -= 1;
-                await redis.set(key, JSON.stringify(bucket), "EX", 3600); // 1 hour expiry
+            if ((result as number) >= 0) {
                 res.setHeader("X-RateLimit-Limit", config.maxTokens);
-                res.setHeader("X-RateLimit-Remaining", Math.floor(bucket.tokens));
+                res.setHeader("X-RateLimit-Remaining", Math.floor(result as number));
                 return next();
             } else {
                 res.status(429).json({
@@ -48,6 +68,7 @@ export const rateLimiter = (config: RateLimitConfig = DEFAULT_CONFIG) => {
             }
         } catch (error) {
             console.error("Rate limiter error:", error);
+            // On redis error, allow request but log it
             next();
         }
     };

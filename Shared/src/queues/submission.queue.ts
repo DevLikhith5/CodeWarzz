@@ -1,5 +1,5 @@
 import { Queue } from 'bullmq';
-import { getRedisConnObject } from '../config/redis.conifg'
+import { getRedisConnObject } from '../config/redis.config'
 
 export const SUBMISSION_QUEUE_NAME = 'submission-queue';
 

@@ -24,8 +24,8 @@ app.use(morgan("dev"));
 
 
 app.use(rateLimiter({
-    maxTokens: 100, 
-    refillRate: 100 / 60, 
+    maxTokens: 20,
+    refillRate: 20 / 60, // 20 requests per minute (~1 req every 3 seconds)
 }));
 
 

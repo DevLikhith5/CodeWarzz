@@ -1,7 +1,7 @@
 import db from "../config/db";
 import { contests } from "../db/schema/contest";
 import { leaderboardSnapshots } from "../db/schema/leaderboard";
-import { getRedisConnObject } from "../config/redis.conifg";
+import { getRedisConnObject } from "../config/redis.config";
 import { and, lte, gte, eq } from "drizzle-orm";
 
 const redis = getRedisConnObject();

@@ -8,8 +8,26 @@ export class UserService {
             throw new NotFoundError("User not found");
         }
 
+        const stats = await this.getUserStats(userId);
+
+        return {
+            user,
+            ...stats
+        };
+    }
+
+    async getUserActivity(userId: string) {
+        const activity = await userRepository.getUserActivity(userId);
+        return activity.map(item => ({
+            date: item.date,
+            count: Number(item.count)
+        }));
+    }
+
+    async getUserStats(userId: string) {
         const solvedCounts = await userRepository.getSolvedCounts(userId);
         const submissionStats = await userRepository.getSubmissionStats(userId);
+        const solvedWithTags = await userRepository.getSolvedWithTags(userId);
 
         // Format solved counts
         const stats = {
@@ -36,8 +54,28 @@ export class UserService {
             }
         });
 
+        // Calculate tag stats
+        const tagCounts: Record<string, number> = {};
+        let totalTags = 0;
+
+        solvedWithTags.forEach(item => {
+            if (item.tags && Array.isArray(item.tags)) {
+                item.tags.forEach(tag => {
+                    tagCounts[tag] = (tagCounts[tag] || 0) + 1;
+                    totalTags++;
+                });
+            }
+        });
+
+        const tagStats = Object.keys(tagCounts).map(tag => ({
+            tag,
+            count: tagCounts[tag],
+            percentage: totalTags > 0
+                ? ((tagCounts[tag] / totalTags) * 100).toFixed(2)
+                : "0.00"
+        })).sort((a, b) => b.count - a.count); // Sort by most solved tags
+
         return {
-            user,
             solved: stats,
             submissions: {
                 total: totalSubmissions,
@@ -45,21 +83,9 @@ export class UserService {
                 acceptanceRate: totalSubmissions > 0
                     ? ((successfulSubmissions / totalSubmissions) * 100).toFixed(2)
                     : "0.00"
-            }
+            },
+            tags: tagStats
         };
-    }
-
-    async getUserActivity(userId: string) {
-        const activity = await userRepository.getUserActivity(userId);
-        return activity.map(item => ({
-            date: item.date,
-            count: Number(item.count)
-        }));
-    }
-
-    async getUserStats(userId: string) {
-        // Detailed stats if needed separately
-        return this.getUserProfile(userId);
     }
 }
 

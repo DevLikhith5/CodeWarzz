@@ -11,7 +11,10 @@ const authRouter = Router();
 authRouter.post('/signup', validate(registerSchema), signUp);
 authRouter.post('/signin', validate(loginSchema), signIn);
 authRouter.post('/refresh', refreshToken);
+import { metricsService } from '../../service/metrics.service';
+
 authRouter.get('/me', verifyToken, (req, res) => {
+    metricsService.getAuthEventsTotal().inc({ event: 'session_check', status: 'success' });
     res.status(200).json({ message: 'Authenticated', user: req.user });
 });
 

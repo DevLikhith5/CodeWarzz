@@ -19,6 +19,15 @@ services:
     networks:
       - codewarz-network
 
+  loki:
+    image: grafana/loki:2.9.2
+    container_name: codewarz-loki
+    ports:
+      - "3100:3100"
+    command: -config.file=/etc/loki/local-config.yaml
+    networks:
+      - codewarz-network
+
   grafana:
     image: grafana/grafana:latest
     container_name: codewarz-grafana
@@ -28,6 +37,7 @@ services:
       - GF_SECURITY_ADMIN_PASSWORD=admin
     volumes:
       - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning
     restart: unless-stopped
     networks:
       - codewarz-network

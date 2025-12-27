@@ -1,20 +1,21 @@
 import IoRedis, { Redis } from 'ioredis';
 import { serverConfig } from '.';
+import logger from './logger.config';
 
 
 const connectToRedis = () => {
-    try{
+    try {
         let connection: Redis;
 
-        return () => {  
-            if(!connection){
-                connection = new IoRedis(serverConfig.REDIS_URL,{maxRetriesPerRequest: null});   
+        return () => {
+            if (!connection) {
+                connection = new IoRedis(serverConfig.REDIS_URL, { maxRetriesPerRequest: null });
 
             }
             return connection;
         }
-    }catch(err){
-        console.log(`Error connecting to redis ${err}`);
+    } catch (err) {
+        logger.error(`Error connecting to redis ${err}`);
         throw err;
     }
 }

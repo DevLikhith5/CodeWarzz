@@ -1,5 +1,8 @@
 import { Request, Response, NextFunction } from "express";
-import redis from "../config/redis";
+import { getRedisConnObject } from "../config/redis.conifg";
+import logger from "../config/logger.config";
+
+const redis = getRedisConnObject();
 
 interface RateLimitConfig {
     maxTokens: number;
@@ -53,7 +56,7 @@ export const rateLimiter = (config: RateLimitConfig = DEFAULT_CONFIG) => {
         try {
             const now = Math.floor(Date.now() / 1000);
 
-            // @ts-ignore - ioredis supports eval
+
             const result = await redis.eval(RATE_LIMIT_SCRIPT, 1, key, config.maxTokens, config.refillRate, now);
 
             if ((result as number) >= 0) {
@@ -67,8 +70,7 @@ export const rateLimiter = (config: RateLimitConfig = DEFAULT_CONFIG) => {
                 });
             }
         } catch (error) {
-            console.error("Rate limiter error:", error);
-            // On redis error, allow request but log it
+            logger.error("Rate limiter error:", { error });
             next();
         }
     };

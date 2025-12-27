@@ -2,12 +2,14 @@ import { Request, Response, NextFunction } from 'express';
 import { submissionService } from '../service/submission.service';
 import { StatusCodes } from 'http-status-codes';
 
+import logger from '../config/logger.config';
 import { successResponse } from '../utils/response';
 
 export const submitController = async (req: Request, res: Response, next: NextFunction) => {
-    console.log(`Above submission controller`)
+    // console.log(`Above submission controller`)
     try {
         const userId = req.user?.id;
+        logger.info(`Processing submission for user ${userId}`, { problemId: req.body.problemId });
         const submission = await submissionService.submitSolution({
             ...req.body,
             userId,

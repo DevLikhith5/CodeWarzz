@@ -1,14 +1,13 @@
+import "dotenv/config";
 import express from "express";
 import proxy from "express-http-proxy";
 import cors from "cors";
 import helmet from "helmet";
-import morgan from "morgan";
-import dotenv from "dotenv";
+import morgan from 'morgan';
 import { rateLimiter } from "./middlewares/rateLimiter";
 import { requestContextMiddleware } from "../../Shared/src/middlewares/requestContext.middleware";
 import { metricsService } from "../../Shared/src/service/metrics.service";
-
-dotenv.config();
+import logger from "./config/logger.config";
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -20,16 +19,25 @@ const LEADERBOARD_SERVICE_URL = process.env.LEADERBOARD_SERVICE_URL || "http://l
 
 app.use(helmet());
 app.use(cors());
-app.use(morgan("dev"));
+const morganStream = {
+    write: (message: string) => {
+        logger.info(message.trim());
+    },
+};
+
+app.use(morgan("combined", { stream: morganStream }));
 
 
 app.use(rateLimiter({
     maxTokens: 20,
-    refillRate: 20 / 60, // 20 requests per minute (~1 req every 3 seconds)
+    refillRate: 20 / 60,
 }));
 
 
+import { metricsMiddleware } from "../../Shared/src/middlewares/metrics.middleware";
+
 app.use(requestContextMiddleware as unknown as express.RequestHandler);
+app.use(metricsMiddleware as unknown as express.RequestHandler);
 
 
 app.get("/metrics", async (req, res) => {
@@ -52,6 +60,14 @@ app.use("/api/v1/leaderboard/live", proxy(LEADERBOARD_SERVICE_URL, {
     proxyReqPathResolver: (req) => {
         const contestId = req.url.split("/")[1];
         return `/api/v1/leaderboard/contest/${contestId}/top`;
+    },
+    proxyErrorHandler: (err, res, next) => {
+        logger.error(`Proxy error: ${err.message}`, { error: err });
+        res.status(503).json({
+            success: false,
+            message: "Service Unavailable",
+            error: err.code || "SERVICE_UNAVAILABLE"
+        });
     }
 }));
 
@@ -63,6 +79,14 @@ app.use("/api/v1/leaderboard/archive", proxy(SHARED_SERVICE_URL, {
     },
     proxyReqPathResolver: (req) => {
         return `/api/v1/leaderboard/archive${req.url}`;
+    },
+    proxyErrorHandler: (err, res, next) => {
+        logger.error(`Proxy error: ${err.message}`, { error: err });
+        res.status(503).json({
+            success: false,
+            message: "Service Unavailable",
+            error: err.code || "SERVICE_UNAVAILABLE"
+        });
     }
 }));
 app.use("/api/v1", proxy(SHARED_SERVICE_URL, {
@@ -72,11 +96,24 @@ app.use("/api/v1", proxy(SHARED_SERVICE_URL, {
     },
     proxyReqPathResolver: (req) => {
         return `/api/v1${req.url}`;
+    },
+    proxyErrorHandler: (err, res, next) => {
+        logger.error(`Proxy error: ${err.message}`, { error: err });
+        res.status(503).json({
+            success: false,
+            message: "Service Unavailable",
+            error: err.code || "SERVICE_UNAVAILABLE"
+        });
     }
 }));
 
+import { appErrorHandler, genericErrorHandler } from "../../Shared/src/middlewares/error.middleware";
+
+app.use(appErrorHandler as unknown as express.ErrorRequestHandler);
+app.use(genericErrorHandler as unknown as express.ErrorRequestHandler);
+
 app.listen(PORT, () => {
-    console.log(`API Gateway is running on http://localhost:${PORT}`);
-    console.log(`Proxying /api/v1/leaderboard -> ${LEADERBOARD_SERVICE_URL}`);
-    console.log(`Proxying /api/v1 (everything else) -> ${SHARED_SERVICE_URL}`);
+    logger.info(`API Gateway is running on http://localhost:${PORT}`);
+    logger.info(`Proxying /api/v1/leaderboard -> ${LEADERBOARD_SERVICE_URL}`);
+    logger.info(`Proxying /api/v1 (everything else) -> ${SHARED_SERVICE_URL}`);
 });

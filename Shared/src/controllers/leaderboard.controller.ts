@@ -1,12 +1,12 @@
 import { Request, Response } from "express";
-import { takeLeaderboardSnapshot, getArchivedLeaderboard } from "../service/leaderboard.service";
+import { leaderboardService } from "../service/leaderboard.service";
 import { StatusCodes } from "http-status-codes";
 import { successResponse } from "../utils/response";
 import { metricsService } from "../service/metrics.service";
 
 export const snapshotLeaderboard = async (req: Request, res: Response) => {
     try {
-        await takeLeaderboardSnapshot();
+        await leaderboardService.takeLeaderboardSnapshot();
         metricsService.getLeaderboardEventsTotal().inc({ event: 'snapshot', status: 'success' });
         res.status(StatusCodes.OK).json({ message: "Leaderboard snapshot taken successfully" });
     } catch (error) {
@@ -19,7 +19,7 @@ export const snapshotLeaderboard = async (req: Request, res: Response) => {
 export const getArchivedLeaderboardController = async (req: Request, res: Response) => {
     try {
         const { contestId } = req.params;
-        const leaderboard = await getArchivedLeaderboard(contestId);
+        const leaderboard = await leaderboardService.getArchivedLeaderboard(contestId);
         metricsService.getLeaderboardEventsTotal().inc({ event: 'view_archive', status: 'success' });
         successResponse(res, leaderboard, "Archived leaderboard fetched successfully");
     } catch (error) {

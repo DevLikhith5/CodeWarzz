@@ -1,7 +1,8 @@
 
 import db from "../config/db";
 import { contests, contestProblems, contestRegistrations } from "../db/schema/contest";
-import { eq, and } from "drizzle-orm";
+import { submissions } from "../db/schema/submission";
+import { eq, and, count, gt, lt, gte, lte, inArray } from "drizzle-orm";
 import { cacheService } from "../service/cache.service";
 
 export type ContestInsert = typeof contests.$inferInsert;
@@ -12,7 +13,7 @@ import { observeDbQuery } from "../utils/metrics.utils";
 export class ContestRepository {
     async createContest(contestData: ContestInsert) {
         return await observeDbQuery('createContest', 'contests', async () => {
-            const [contest]= await db.insert(contests).values(contestData).returning();
+            const [contest] = await db.insert(contests).values(contestData).returning();
             return contest;
         });
     }
@@ -25,9 +26,54 @@ export class ContestRepository {
         });
     }
 
-    async getAllContests() {
+    async getAllContests(filters: { status?: string, userId?: string, registered?: boolean, participated?: boolean } = {}) {
         return await observeDbQuery('getAllContests', 'contests', async () => {
-            return await db.query.contests.findMany();
+            const now = new Date();
+            const conditions = [];
+
+            if (filters.status) {
+                if (filters.status === 'upcoming') {
+                    conditions.push(gt(contests.startTime, now));
+                } else if (filters.status === 'ongoing') {
+                    conditions.push(and(lte(contests.startTime, now), gte(contests.endTime, now)));
+                } else if (filters.status === 'ended') {
+                    conditions.push(lt(contests.endTime, now));
+                }
+            }
+
+            if ((filters.registered || filters.participated) && filters.userId) {
+                const allowedIds = new Set<string>();
+
+                // 1. Participated = User has SUBMISSIONS
+                if (filters.participated) {
+                    const submittedContests = await db.select({ id: submissions.contestId })
+                        .from(submissions)
+                        .where(eq(submissions.userId, filters.userId));
+
+                    submittedContests.forEach(s => {
+                        if (s.id) allowedIds.add(s.id);
+                    });
+                }
+
+                // 2. Registered = User has REGISTRATIONS
+                if (filters.registered) {
+                    const registeredContests = await db.select({
+                        id: contestRegistrations.contestId
+                    })
+                        .from(contestRegistrations)
+                        .where(eq(contestRegistrations.userId, filters.userId));
+
+                    registeredContests.forEach(r => allowedIds.add(r.id));
+                }
+
+                if (allowedIds.size === 0) return [];
+                conditions.push(inArray(contests.id, Array.from(allowedIds)));
+            }
+
+            return await db.query.contests.findMany({
+                where: conditions.length ? and(...conditions) : undefined,
+                orderBy: (contests, { desc }) => [desc(contests.startTime)]
+            });
         });
     }
 
@@ -61,10 +107,8 @@ export class ContestRepository {
         if (cached) return cached;
 
         return await observeDbQuery('getOngoingContestsForProblem', 'contests', async () => {
-            // Find contests that:
-            // 1. contain the problem
-            // 2. are currently ongoing (startTime <= now <= endTime)
-            const now = new Date(); 
+
+            const now = new Date();
             const ongoingContests = await db.query.contests.findMany({
                 where: (contests, { and, lte, gte }) => and(
                     lte(contests.startTime, now),
@@ -73,15 +117,13 @@ export class ContestRepository {
                 with: {
                     problems: {
                         where: eq(contestProblems.problemId, problemId),
-                        limit: 1 // Optimization: check if problem exists in this contest
+                        limit: 1
                     }
                 }
             });
 
-            // Filter out contests that don't have the problem (the 'with' clause fetches related problems, but we need to ensure the contest effectively has it)
-            // With Drizzle's 'with' filtering, the 'problems' array will be empty if not found.
             const result = ongoingContests.filter(c => c.problems.length > 0);
-            await cacheService.set(cacheKey, result, 60); // Cache for 1 minute
+            await cacheService.set(cacheKey, result, 60);
             return result;
         });
     }
@@ -140,20 +182,28 @@ export class ContestRepository {
         });
     }
 
+    async getContestRegistrationCount(contestId: string) {
+        return await observeDbQuery('getContestRegistrationCount', 'contestRegistrations', async () => {
+            const [result] = await db.select({ count: count() })
+                .from(contestRegistrations)
+                .where(eq(contestRegistrations.contestId, contestId));
+            return result.count;
+        });
+    }
+
     async getRegistrationCounts() {
         return await observeDbQuery('getRegistrationCounts', 'contestRegistrations', async () => {
-            // Since Drizzle query builder aggregate support varies, we can use a raw query or simple findMany for now if volume is low.
-            // For scalability, raw SQL 'SELECT contest_id, COUNT(*) FROM contest_registrations GROUP BY contest_id' is best.
-            // But to stick to Drizzle's query API efficiently:
-            const allRegistrations = await db.query.contestRegistrations.findMany({
-                columns: {
-                    contestId: true
-                }
-            });
+            const results = await db.select({
+                contestId: contestRegistrations.contestId,
+                count: count()
+            })
+                .from(contestRegistrations)
+                .groupBy(contestRegistrations.contestId);
+
 
             const counts: Record<string, number> = {};
-            for (const reg of allRegistrations) {
-                counts[reg.contestId] = (counts[reg.contestId] || 0) + 1;
+            for (const row of results) {
+                counts[row.contestId] = row.count;
             }
             return counts;
         });

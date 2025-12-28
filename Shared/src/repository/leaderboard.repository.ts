@@ -8,8 +8,8 @@ const redis = getRedisConnObject();
 
 import { observeDbQuery } from "../utils/metrics.utils";
 
-export const leaderboardRepository = {
-    getActiveContests: async () => {
+export class LeaderboardRepository {
+    async getActiveContests() {
         return await observeDbQuery('getActiveContests', 'contests', async () => {
             const now = new Date();
             return await db.query.contests.findMany({
@@ -19,21 +19,21 @@ export const leaderboardRepository = {
                 )
             });
         });
-    },
+    }
 
-    getLeaderboardFromRedis: async (contestId: string) => {
+    async getLeaderboardFromRedis(contestId: string) {
         const redisKey = `CodeWarz:Leaderboard:${contestId}`;
         return await redis.zrevrange(redisKey, 0, -1, "WITHSCORES");
-    },
+    }
 
-    saveSnapshots: async (snapshots: typeof leaderboardSnapshots.$inferInsert[]) => {
+    async saveSnapshots(snapshots: typeof leaderboardSnapshots.$inferInsert[]) {
         if (snapshots.length === 0) return;
         return await observeDbQuery('saveSnapshots', 'leaderboardSnapshots', async () => {
             return await db.insert(leaderboardSnapshots).values(snapshots);
         });
-    },
+    }
 
-    getSnapshotsByContestId: async (contestId: string) => {
+    async getSnapshotsByContestId(contestId: string) {
         return await observeDbQuery('getSnapshotsByContestId', 'leaderboardSnapshots', async () => {
             return await db.query.leaderboardSnapshots.findMany({
                 where: eq(leaderboardSnapshots.contestId, contestId),
@@ -48,4 +48,6 @@ export const leaderboardRepository = {
             });
         });
     }
-};
+}
+
+export const leaderboardRepository = new LeaderboardRepository();

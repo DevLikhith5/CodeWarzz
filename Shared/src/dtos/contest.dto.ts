@@ -26,3 +26,11 @@ export const contestIdSchema = z.object({
 export const registerContestSchema = {
     params: contestIdSchema
 };
+
+export const getContestsSchema = {
+    query: z.object({
+        status: z.enum(['upcoming', 'ongoing', 'ended']).optional(),
+        registered: z.enum(['true', 'false']).optional(),
+        participated: z.enum(['true', 'false']).optional(),
+    })
+};

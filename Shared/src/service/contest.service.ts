@@ -1,5 +1,6 @@
 
 import { contestRepository, ContestInsert } from "../repository/contest.repository";
+import { problemRepository } from "../repository/problem.repository";
 import { generateSlug } from "../utils/slug.utils";
 
 export class ContestService {
@@ -27,8 +28,7 @@ export class ContestService {
             isRegistered = await contestRepository.isUserRegistered(id, userId);
         }
 
-        const counts = await contestRepository.getRegistrationCounts();
-        const registeredUserCount = counts[id] || 0;
+        const registeredUserCount = await contestRepository.getContestRegistrationCount(id);
 
         return {
             ...contest,
@@ -38,8 +38,15 @@ export class ContestService {
         };
     }
 
-    async getAllContests(userId?: string) {
-        const contests = await contestRepository.getAllContests();
+    async getAllContests(userId?: string, query: { status?: string, registered?: string, participated?: string } = {}) {
+        const filters = {
+            status: query.status,
+            userId,
+            registered: query.registered === 'true',
+            participated: query.participated === 'true'
+        };
+
+        const contests = await contestRepository.getAllContests(filters);
         const counts = await contestRepository.getRegistrationCounts();
         const now = new Date();
 
@@ -66,7 +73,16 @@ export class ContestService {
     }
 
     async addProblemToContest(contestId: string, problemId: string) {
-        // Validation: check if contest exists, problem exists
+        const contest = await contestRepository.getContestById(contestId);
+        if (!contest) {
+            throw new Error("Contest not found");
+        }
+
+        const problem = await problemRepository.getProblemById(problemId);
+        if (!problem) {
+            throw new Error("Problem not found");
+        }
+
         return await contestRepository.addProblemToContest(contestId, problemId);
     }
 
@@ -93,10 +109,9 @@ export class ContestService {
         const isRegistered = await contestRepository.isUserRegistered(contestId, userId);
         if (!isRegistered) throw new Error("User not registered");
 
-        // Allowed to deregister only before contest ends (or strictly before it starts? Let's say before end for now)
         const now = new Date();
-        if (now > contest.endTime) {
-            throw new Error("Cannot deregister after contest has ended");
+        if (now >= contest.startTime) {
+            throw new Error("Cannot deregister after contest has started");
         }
 
         return await contestRepository.deregisterUserForContest(contestId, userId);

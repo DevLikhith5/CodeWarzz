@@ -16,13 +16,14 @@ import {
     createContestSchema,
     addProblemToContestSchema,
     registerContestSchema,
-    contestIdSchema
+    contestIdSchema,
+    getContestsSchema
 } from "../../dtos/contest.dto";
 
 const contestRouter = Router();
 
 contestRouter.post("/", verifyToken, isAdmin, validate(createContestSchema), createContest);
-contestRouter.get("/", extractUser, getAllContests);
+contestRouter.get("/", extractUser, validate(getContestsSchema), getAllContests);
 contestRouter.post("/add-problem", verifyToken, isAdmin, validate(addProblemToContestSchema), addProblemToContest);
 contestRouter.get("/:id", extractUser, validate({ params: contestIdSchema }), getContest);
 contestRouter.post("/:id/register", verifyToken, validate(registerContestSchema), registerForContest);

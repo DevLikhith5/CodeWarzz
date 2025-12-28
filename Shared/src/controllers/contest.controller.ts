@@ -23,7 +23,6 @@ export const createContest = async (req: Request, res: Response) => {
 
 export const getContest = async (req: Request, res: Response) => {
     try {
-        // @ts-ignore
         const userId = req.user?.id;
         const contest = await contestService.getContest(req.params.id, userId);
         if (!contest) {
@@ -40,9 +39,9 @@ export const getContest = async (req: Request, res: Response) => {
 
 export const getAllContests = async (req: Request, res: Response) => {
     try {
-        // @ts-ignore
         const userId = req.user?.id;
-        const contests = await contestService.getAllContests(userId);
+        const { status, registered, participated } = req.query as { status?: string, registered?: string, participated?: string };
+        const contests = await contestService.getAllContests(userId, { status, registered, participated });
         metricsService.getContestEventsTotal().inc({ event: 'list_contests', status: 'success' });
         successResponse(res, contests);
     } catch (error) {
@@ -68,9 +67,8 @@ export const addProblemToContest = async (req: Request, res: Response) => {
 export const registerForContest = async (req: Request, res: Response) => {
     try {
         const contestId = req.params.id;
-        // @ts-ignore
-        const userId = req.user.id;
-        await contestService.registerForContest(contestId, userId);
+        const userId = req.user?.id;
+        await contestService.registerForContest(contestId, userId!);
         metricsService.getContestEventsTotal().inc({ event: 'register', status: 'success' });
         successResponse(res, null, "Registered successfully");
     } catch (error) {
@@ -82,9 +80,8 @@ export const registerForContest = async (req: Request, res: Response) => {
 export const deregisterForContest = async (req: Request, res: Response) => {
     try {
         const contestId = req.params.id;
-        // @ts-ignore
-        const userId = req.user.id;
-        await contestService.deregisterForContest(contestId, userId);
+        const userId = req.user?.id;
+        await contestService.deregisterForContest(contestId, userId!);
         metricsService.getContestEventsTotal().inc({ event: 'deregister', status: 'success' });
         successResponse(res, null, "Deregistered successfully");
     } catch (error) {

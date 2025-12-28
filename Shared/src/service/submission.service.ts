@@ -2,12 +2,12 @@ import { submissionRepository, SubmissionInsert } from "../repository/submission
 import { contestRepository } from "../repository/contest.repository";
 import { submissionQueue } from "../queues/submission.queue";
 import { ForbiddenError } from "../utils/errors/app.error";
+import { v4 as uuidv4 } from 'uuid';
 
 export type CreateSubmissionDTO = Omit<SubmissionInsert, 'id' | 'createdAt'>;
 
 export class SubmissionService {
     async submitSolution(data: SubmissionInsert) {
-        // Access Control: Check if problem belongs to an ongoing contest
         const ongoingContests = await contestRepository.getOngoingContestsForProblem(data.problemId);
 
         if (ongoingContests.length > 0) {
@@ -27,7 +27,6 @@ export class SubmissionService {
             }
         }
 
-        // Check if submission already exists for this user and problem
         const existingSubmission = await submissionRepository.getSubmissionByProblemId(data.userId || "", data.problemId);
         if (existingSubmission && existingSubmission.verdict === "AC") {
             // return existingSubmission; // Allow resubmission
@@ -59,7 +58,6 @@ export class SubmissionService {
     }
 
     async runSolution(data: { userId?: string; code: string; language: string; problemId: string; testcases?: any[] }) {
-        // Access Control: Check if problem belongs to an ongoing contest
         const ongoingContests = await contestRepository.getOngoingContestsForProblem(data.problemId);
 
         if (ongoingContests.length > 0) {
@@ -85,10 +83,13 @@ export class SubmissionService {
             submissionCreatedAt: new Date(),
         };
 
-        const job = await submissionQueue.add('evaluate-submission', payload);
+        const jobId = uuidv4();
+        await submissionQueue.add('evaluate-submission', payload, {
+            jobId
+        });
         // Note: For 'run', usually we wait for result or return job info. 
         // Assuming async execution for now as per queue pattern.
-        return { message: "Run request queued", jobId: job.id };
+        return { message: "Run request queued", jobId: jobId };
     }
 
     async getRunResult(jobId: string) {

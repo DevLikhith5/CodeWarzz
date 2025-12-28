@@ -9,9 +9,9 @@ export const metricsMiddleware = (req: Request, res: Response, next: NextFunctio
         const duration = process.hrtime(start);
         const durationInSeconds = duration[0] + duration[1] / 1e9;
 
-        console.log("req.route: ",req.route)
-        console.log("req.baseUrl: ",req.baseUrl)
-        console.log("req.originalUrl: ",req.originalUrl)
+        // console.log("req.route: ",req.route)
+        // console.log("req.baseUrl: ",req.baseUrl)
+        // console.log("req.originalUrl: ",req.originalUrl)
 
         let contextRoute = req.route ? (req.baseUrl + req.route.path) : '';
 

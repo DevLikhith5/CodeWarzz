@@ -19,7 +19,4 @@ export const submissionQueue = new Queue(SUBMISSION_QUEUE_NAME, {
     }
 });
 
-import { QueueEvents } from 'bullmq';
-export const submissionQueueEvents = new QueueEvents(SUBMISSION_QUEUE_NAME, {
-    connection: getRedisConnObject()
-});
+

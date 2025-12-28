@@ -1,7 +1,8 @@
 import db from "../config/db";
 import { problems, testcases } from "../db/schema/problems";
 import { contestProblems } from "../db/schema/contest";
-import { InferInsertModel, eq } from "drizzle-orm";
+import { submissions } from "../db/schema/submission";
+import { InferInsertModel, eq, sql, getTableColumns, count } from "drizzle-orm";
 
 export type ProblemInsert = InferInsertModel<typeof problems>;
 export type TestcaseInsert = InferInsertModel<typeof testcases>;
@@ -43,12 +44,31 @@ export class ProblemRepository {
 
     async getProblemById(id: string) {
         return await observeDbQuery('getProblemById', 'problems', async () => {
-            return await db.query.problems.findFirst({
-                where: eq(problems.id, id),
-                with: {
-                    testcases: true
-                }
+            const problemData = await db
+                .select({
+                    ...getTableColumns(problems),
+                    stats: {
+                        totalSubmissions: count(submissions.id),
+                        acceptedSubmissions: sql<number>`count(case when ${submissions.verdict} = 'AC' then 1 end)::int`,
+                    }
+                })
+                .from(problems)
+                .leftJoin(submissions, eq(problems.id, submissions.problemId))
+                .where(eq(problems.id, id))
+                .groupBy(problems.id)
+                .then(res => res[0]);
+
+            if (!problemData) return null;
+
+            
+            const problemTestcases = await db.query.testcases.findMany({
+                where: eq(testcases.problemId, id)
             });
+
+            return {
+                ...problemData,
+                testcases: problemTestcases
+            };
         });
     }
 
@@ -63,15 +83,23 @@ export class ProblemRepository {
 
     async getAllProblems() {
         return await observeDbQuery('getAllProblems', 'problems', async () => {
-            return await db.query.problems.findMany({
-                columns: {
-                    id: true,
-                    title: true,
-                    slug: true,
-                    difficulty: true,
-                    createdAt: true,
-                }
-            });
+            const results = await db
+                .select({
+                    id: problems.id,
+                    title: problems.title,
+                    slug: problems.slug,
+                    difficulty: problems.difficulty,
+                    createdAt: problems.createdAt,
+                    stats: {
+                        totalSubmissions: count(submissions.id),
+                        acceptedSubmissions: sql<number>`count(case when ${submissions.verdict} = 'AC' then 1 end)::int`,
+                    }
+                })
+                .from(problems)
+                .leftJoin(submissions, eq(problems.id, submissions.problemId))
+                .groupBy(problems.id);
+
+            return results;
         });
     }
 }

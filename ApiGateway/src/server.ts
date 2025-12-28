@@ -28,16 +28,17 @@ const morganStream = {
 app.use(morgan("combined", { stream: morganStream }));
 
 
-app.use(rateLimiter({
-    maxTokens: 20,
-    refillRate: 20 / 60,
-}));
 
 
 import { metricsMiddleware } from "../../Shared/src/middlewares/metrics.middleware";
 
 app.use(requestContextMiddleware as unknown as express.RequestHandler);
 app.use(metricsMiddleware as unknown as express.RequestHandler);
+
+app.use(rateLimiter({
+    maxTokens: 20,
+    refillRate: 20 / 60,
+}));
 
 
 app.get("/metrics", async (req, res) => {

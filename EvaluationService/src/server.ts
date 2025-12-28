@@ -31,8 +31,12 @@ app.use('/api/v2', v2Router);
 
 
 app.use(appErrorHandler);
-app.use(appErrorHandler);
 app.use(genericErrorHandler);
+
+import { queueMonitorService } from '../../Shared/src/service/queueMonitor.service';
+import { getRedisConnObject } from './config/redis.config';
+// Monitor submission queue locally for Evaluation Service metrics
+queueMonitorService.monitorQueue("submission-queue", getRedisConnObject());
 
 app.get("/metrics", async (req, res) => {
     res.set('Content-Type', metricsService.getRegistry().contentType);

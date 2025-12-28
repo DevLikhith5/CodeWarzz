@@ -1,89 +1,58 @@
 
 import db from "../config/db";
 import { contests, contestProblems, contestRegistrations } from "../db/schema/contest";
-import { InferInsertModel, eq, and } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import { cacheService } from "../service/cache.service";
 
-export type ContestInsert = InferInsertModel<typeof contests>;
+export type ContestInsert = typeof contests.$inferInsert;
 
-import { metricsService } from "../service/metrics.service";
+import { observeDbQuery } from "../utils/metrics.utils";
 
+//Cache-Aside Pattern = Read-through + Invalidate-on-write.
 export class ContestRepository {
     async createContest(contestData: ContestInsert) {
-        const end = metricsService.getDbQueryDuration().startTimer({ operation: 'insert', table: 'contests' });
-        try {
-            const [contest] = await db.insert(contests).values(contestData).returning();
-            end({ status: 'success' });
+        return await observeDbQuery('createContest', 'contests', async () => {
+            const [contest]= await db.insert(contests).values(contestData).returning();
             return contest;
-        } catch (err) {
-            end({ status: 'error' });
-            throw err;
-        }
+        });
     }
 
     async getContestById(id: string) {
-        const end = metricsService.getDbQueryDuration().startTimer({ operation: 'select', table: 'contests' });
-        try {
-            const result = await db.query.contests.findFirst({
+        return await observeDbQuery('getContestById', 'contests', async () => {
+            return await db.query.contests.findFirst({
                 where: eq(contests.id, id)
             });
-            end({ status: 'success' });
-            return result;
-        } catch (err) {
-            end({ status: 'error' });
-            throw err;
-        }
+        });
     }
 
     async getAllContests() {
-        const end = metricsService.getDbQueryDuration().startTimer({ operation: 'select_many', table: 'contests' });
-        try {
-            const result = await db.query.contests.findMany();
-            end({ status: 'success' });
-            return result;
-        } catch (err) {
-            end({ status: 'error' });
-            throw err;
-        }
+        return await observeDbQuery('getAllContests', 'contests', async () => {
+            return await db.query.contests.findMany();
+        });
     }
 
     async addProblemToContest(contestId: string, problemId: string) {
-        const end = metricsService.getDbQueryDuration().startTimer({ operation: 'insert', table: 'contestProblems' });
-        try {
+        return await observeDbQuery('addProblemToContest', 'contestProblems', async () => {
             console.log("INSIDE CONTEST REPOSITORY LAYER: ", contestId, problemId)
             await db.insert(contestProblems).values({ contestId, problemId });
             await cacheService.del(`contest:problems:${contestId}`);
             await cacheService.del(`contest:ongoing:problem:${problemId}`);
-            end({ status: 'success' });
-        } catch (err) {
-            end({ status: 'error' });
-            throw err;
-        }
+        });
     }
 
     async registerUserForContest(contestId: string, userId: string) {
-        const end = metricsService.getDbQueryDuration().startTimer({ operation: 'insert', table: 'contestRegistrations' });
-        try {
+        return await observeDbQuery('registerUserForContest', 'contestRegistrations', async () => {
             await db.insert(contestRegistrations).values({ contestId, userId });
             await cacheService.del(`contest:registration:${contestId}:${userId}`);
-            end({ status: 'success' });
-        } catch (err) {
-            end({ status: 'error' });
-            throw err;
-        }
+        });
     }
 
     async deregisterUserForContest(contestId: string, userId: string) {
-        const end = metricsService.getDbQueryDuration().startTimer({ operation: 'delete', table: 'contestRegistrations' });
-        try {
+        return await observeDbQuery('deregisterUserForContest', 'contestRegistrations', async () => {
             await db.delete(contestRegistrations)
                 .where(and(eq(contestRegistrations.contestId, contestId), eq(contestRegistrations.userId, userId)));
             await cacheService.del(`contest:registration:${contestId}:${userId}`);
-            end({ status: 'success' });
-        } catch (err) {
-            end({ status: 'error' });
-            throw err;
-        }
+        });
     }
 
     async getOngoingContestsForProblem(problemId: string) {
@@ -91,13 +60,11 @@ export class ContestRepository {
         const cached = await cacheService.get<any[]>(cacheKey);
         if (cached) return cached;
 
-        const end = metricsService.getDbQueryDuration().startTimer({ operation: 'select_many', table: 'contests' });
-
-        try {
+        return await observeDbQuery('getOngoingContestsForProblem', 'contests', async () => {
             // Find contests that:
             // 1. contain the problem
             // 2. are currently ongoing (startTime <= now <= endTime)
-            const now = new Date();
+            const now = new Date(); 
             const ongoingContests = await db.query.contests.findMany({
                 where: (contests, { and, lte, gte }) => and(
                     lte(contests.startTime, now),
@@ -115,12 +82,8 @@ export class ContestRepository {
             // With Drizzle's 'with' filtering, the 'problems' array will be empty if not found.
             const result = ongoingContests.filter(c => c.problems.length > 0);
             await cacheService.set(cacheKey, result, 60); // Cache for 1 minute
-            end({ status: 'success' });
             return result;
-        } catch (err) {
-            end({ status: 'error' });
-            throw err;
-        }
+        });
     }
 
     async getContestProblems(contestId: string) {
@@ -128,9 +91,7 @@ export class ContestRepository {
         const cached = await cacheService.get<any[]>(cacheKey);
         if (cached) return cached;
 
-        const end = metricsService.getDbQueryDuration().startTimer({ operation: 'select_many', table: 'contestProblems' });
-
-        try {
+        return await observeDbQuery('getContestProblems', 'contestProblems', async () => {
             // Fetch contest problems with problem details
             const results = await db.query.contestProblems.findMany({
                 where: eq(contestProblems.contestId, contestId),
@@ -148,12 +109,8 @@ export class ContestRepository {
             }));
 
             await cacheService.set(cacheKey, problems, 300);
-            end({ status: 'success' });
             return problems;
-        } catch (err) {
-            end({ status: 'error' });
-            throw err;
-        }
+        });
     }
 
     async isUserRegistered(contestId: string, userId: string) {
@@ -161,45 +118,33 @@ export class ContestRepository {
         const cached = await cacheService.get<boolean>(cacheKey);
         if (cached !== null) return cached;
 
-        const end = metricsService.getDbQueryDuration().startTimer({ operation: 'select', table: 'contestRegistrations' });
-
-        try {
+        return await observeDbQuery('isUserRegistered', 'contestRegistrations', async () => {
             const registration = await db.query.contestRegistrations.findFirst({
                 where: and(eq(contestRegistrations.contestId, contestId), eq(contestRegistrations.userId, userId))
             });
             const isRegistered = !!registration;
             await cacheService.set(cacheKey, isRegistered, 300); // 5 minutes
-            end({ status: 'success' });
             return isRegistered;
-        } catch (err) {
-            end({ status: 'error' });
-            throw err;
-        }
+        });
     }
 
     async getUserRegisteredContestIds(userId: string) {
-        const end = metricsService.getDbQueryDuration().startTimer({ operation: 'select_many', table: 'contestRegistrations' });
-        try {
+        return await observeDbQuery('getUserRegisteredContestIds', 'contestRegistrations', async () => {
             const registrations = await db.query.contestRegistrations.findMany({
                 where: eq(contestRegistrations.userId, userId),
                 columns: {
                     contestId: true
                 }
             });
-            end({ status: 'success' });
             return new Set(registrations.map(r => r.contestId));
-        } catch (err) {
-            end({ status: 'error' });
-            throw err;
-        }
+        });
     }
 
     async getRegistrationCounts() {
-        const end = metricsService.getDbQueryDuration().startTimer({ operation: 'select_many', table: 'contestRegistrations' });
-        // Since Drizzle query builder aggregate support varies, we can use a raw query or simple findMany for now if volume is low.
-        // For scalability, raw SQL 'SELECT contest_id, COUNT(*) FROM contest_registrations GROUP BY contest_id' is best.
-        // But to stick to Drizzle's query API efficiently:
-        try {
+        return await observeDbQuery('getRegistrationCounts', 'contestRegistrations', async () => {
+            // Since Drizzle query builder aggregate support varies, we can use a raw query or simple findMany for now if volume is low.
+            // For scalability, raw SQL 'SELECT contest_id, COUNT(*) FROM contest_registrations GROUP BY contest_id' is best.
+            // But to stick to Drizzle's query API efficiently:
             const allRegistrations = await db.query.contestRegistrations.findMany({
                 columns: {
                     contestId: true
@@ -210,12 +155,8 @@ export class ContestRepository {
             for (const reg of allRegistrations) {
                 counts[reg.contestId] = (counts[reg.contestId] || 0) + 1;
             }
-            end({ status: 'success' });
             return counts;
-        } catch (err) {
-            end({ status: 'error' });
-            throw err;
-        }
+        });
     }
 }
 

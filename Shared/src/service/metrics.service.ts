@@ -30,7 +30,7 @@ export class MetricsService {
             help: 'Duration of HTTP requests in seconds',
             labelNames: ['method', 'route', 'status_code'],
             buckets: [0.1, 0.5, 1, 2, 5]
-        });
+        }); 
 
         this.httpRequestsTotal = new client.Counter({
             name: 'http_requests_total',

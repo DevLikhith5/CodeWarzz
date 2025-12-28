@@ -1,7 +1,7 @@
 import { submissionRepository, SubmissionInsert } from "../repository/submission.repository";
 import { contestRepository } from "../repository/contest.repository";
 import { submissionQueue } from "../queues/submission.queue";
-import {  ForbiddenError } from "../utils/errors/app.error";
+import { ForbiddenError } from "../utils/errors/app.error";
 
 export type CreateSubmissionDTO = Omit<SubmissionInsert, 'id' | 'createdAt'>;
 
@@ -89,6 +89,24 @@ export class SubmissionService {
         // Note: For 'run', usually we wait for result or return job info. 
         // Assuming async execution for now as per queue pattern.
         return { message: "Run request queued", jobId: job.id };
+    }
+
+    async getRunResult(jobId: string) {
+        const job = await submissionQueue.getJob(jobId);
+        if (!job) {
+            return null;
+        }
+
+        const state = await job.getState();
+        const result = job.returnvalue;
+        const error = job.failedReason;
+
+        return {
+            jobId: job.id,
+            status: state,
+            result,
+            error
+        };
     }
 
     async updateSubmission(id: string, data: Partial<SubmissionInsert>) {

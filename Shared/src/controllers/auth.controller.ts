@@ -29,9 +29,12 @@ export const signIn = async (req: Request, res: Response, next: NextFunction) =>
         const tokens = await authService.signIn(email, req.body.password);
         logger.info('Login successful', { email });
 
+        metricsService.getAuthEventsTotal().inc({ event: 'signin', status: 'success' });
+
         successResponse(res, tokens, 'Login successful');
     } catch (error) {
         logger.error('SignIn failed', { error });
+        metricsService.getAuthEventsTotal().inc({ event: 'signin', status: 'failure' });
         next(error);
     }
 };

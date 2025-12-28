@@ -200,6 +200,11 @@ export const startSubmissionConsumer = () => {
             }
           }
 
+          if (submissionCreatedAt) {
+            const e2eDuration = (Date.now() - new Date(submissionCreatedAt).getTime()) / 1000;
+            metricsService.getSubmissionE2EDuration().observe({ status: result.verdict === "AC" ? 'processed' : 'failed', language }, e2eDuration);
+          }
+
           return evaluationResult;
         });
         end({ status: 'success' });

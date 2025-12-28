@@ -6,6 +6,9 @@ export const createContestSchema = {
         description: z.string(),
         startTime: z.string().datetime().or(z.date()),
         endTime: z.string().datetime().or(z.date()),
+    }).refine((data) => data.startTime < data.endTime, {
+        message: "Start time must be before end time",
+        path: ["endTime"],
     })
 };
 

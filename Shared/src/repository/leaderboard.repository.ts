@@ -6,14 +6,18 @@ import { and, lte, gte, eq } from "drizzle-orm";
 
 const redis = getRedisConnObject();
 
+import { observeDbQuery } from "../utils/metrics.utils";
+
 export const leaderboardRepository = {
     getActiveContests: async () => {
-        const now = new Date();
-        return await db.query.contests.findMany({
-            where: and(
-                lte(contests.startTime, now),
-                gte(contests.endTime, now)
-            )
+        return await observeDbQuery('getActiveContests', 'contests', async () => {
+            const now = new Date();
+            return await db.query.contests.findMany({
+                where: and(
+                    lte(contests.startTime, now),
+                    gte(contests.endTime, now)
+                )
+            });
         });
     },
 
@@ -24,20 +28,24 @@ export const leaderboardRepository = {
 
     saveSnapshots: async (snapshots: typeof leaderboardSnapshots.$inferInsert[]) => {
         if (snapshots.length === 0) return;
-        return await db.insert(leaderboardSnapshots).values(snapshots);
+        return await observeDbQuery('saveSnapshots', 'leaderboardSnapshots', async () => {
+            return await db.insert(leaderboardSnapshots).values(snapshots);
+        });
     },
 
     getSnapshotsByContestId: async (contestId: string) => {
-        return await db.query.leaderboardSnapshots.findMany({
-            where: eq(leaderboardSnapshots.contestId, contestId),
-            with: {
-                user: {
-                    columns: {
-                        username: true
+        return await observeDbQuery('getSnapshotsByContestId', 'leaderboardSnapshots', async () => {
+            return await db.query.leaderboardSnapshots.findMany({
+                where: eq(leaderboardSnapshots.contestId, contestId),
+                with: {
+                    user: {
+                        columns: {
+                            username: true
+                        }
                     }
-                }
-            },
-            orderBy: (snapshots, { asc }) => [asc(snapshots.rank)]
+                },
+                orderBy: (snapshots, { asc }) => [asc(snapshots.rank)]
+            });
         });
     }
 };

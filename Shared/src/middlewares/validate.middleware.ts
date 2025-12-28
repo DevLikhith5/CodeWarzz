@@ -1,17 +1,16 @@
 import { Request, Response, NextFunction } from "express";
-import { AnyZodObject, ZodError } from "zod";
+import { ZodError, ZodSchema } from "zod";
 import { StatusCodes } from "http-status-codes";
 
 interface ValidationSchemas {
-    body?: AnyZodObject;
-    params?: AnyZodObject;
-    query?: AnyZodObject;
+    body?: ZodSchema;
+    params?: ZodSchema;
+    query?: ZodSchema;
 }
 
-export const validate = (schemas: ValidationSchemas | AnyZodObject) => (req: Request, res: Response, next: NextFunction) => {
+export const validate = (schemas: ValidationSchemas | ZodSchema) => (req: Request, res: Response, next: NextFunction) => {
     try {
         if ('parse' in schemas) {
-            // backward compatibility for just passing a body schema
             schemas.parse(req.body);
         } else {
             if (schemas.body) schemas.body.parse(req.body);

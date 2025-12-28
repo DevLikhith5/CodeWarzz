@@ -4,7 +4,6 @@ import { generateSlug } from "../utils/slug.utils";
 
 export class ContestService {
     async createContest(data: ContestInsert) {
-        // Validation logic can go here (e.g. check start time < end time)
         if (!data.slug) {
             data.slug = generateSlug(data.title);
         }

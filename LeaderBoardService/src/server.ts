@@ -34,9 +34,9 @@ app.use('/api/v2', v2Router);
 app.use(appErrorHandler);
 app.use(genericErrorHandler);
 
-import { monitorQueue } from '../../Shared/src/service/queueMonitor.service';
+import { queueMonitorService } from '../../Shared/src/service/queueMonitor.service';
 import { getRedisConnObject } from './config/redis.config';
-monitorQueue("leaderboard-queue", getRedisConnObject());
+queueMonitorService.monitorQueue("leaderboard-queue", getRedisConnObject());
 
 startVerdictConsumer();
 

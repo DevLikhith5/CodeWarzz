@@ -68,6 +68,22 @@ export const runController = async (req: Request, res: Response, next: NextFunct
     }
 }
 
+export const getRunResultController = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        const { id } = req.params;
+        const result = await submissionService.getRunResult(id);
+
+        if (!result) {
+            res.status(StatusCodes.NOT_FOUND).json({ message: 'Job not found' });
+            return;
+        }
+
+        successResponse(res, result);
+    } catch (error) {
+        next(error);
+    }
+};
+
 export const updateSubmissionController = async (req: Request, res: Response, next: NextFunction) => {
     try {
         const { id } = req.params;

@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { submitController, getSubmissionController, getSubmissionsController, runController, updateSubmissionController } from '../../controllers/submission.controller';
+import { submitController, getSubmissionController, getSubmissionsController, runController, updateSubmissionController, getRunResultController } from '../../controllers/submission.controller';
 import { verifyToken, verifyInternalOrUser } from '../../middlewares/auth.middleware';
 
 import { validate } from '../../middlewares/validate.middleware';
@@ -15,6 +15,7 @@ const submissionRouter = Router();
 
 submissionRouter.get('/', verifyToken, validate(getSubmissionsSchema), getSubmissionsController);
 submissionRouter.get('/:id', verifyToken, validate(getSubmissionSchema), getSubmissionController);
+submissionRouter.get('/run/:id', verifyToken, getRunResultController);
 submissionRouter.patch('/:id', verifyInternalOrUser, validate(updateSubmissionSchema), updateSubmissionController);
 submissionRouter.post('/', verifyToken, validate(createSubmissionSchema), submitController);
 submissionRouter.post('/run', verifyToken, validate(runCodeSchema), runController);

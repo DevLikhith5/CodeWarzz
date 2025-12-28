@@ -11,7 +11,10 @@ export const submissionQueue = new Queue(SUBMISSION_QUEUE_NAME, {
             type: 'exponential',
             delay: 1000,
         },
-        removeOnComplete: true,
+        removeOnComplete: {
+            age: 300, // Keep for 5 minutes
+            count: 100 // Keep last 100 jobs
+        },
         removeOnFail: 500
     }
 });

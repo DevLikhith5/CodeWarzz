@@ -13,6 +13,8 @@ export const metricsMiddleware = (req: Request, res: Response, next: NextFunctio
         // console.log("req.baseUrl: ",req.baseUrl)
         // console.log("req.originalUrl: ",req.originalUrl)
 
+        //Doing Noramlization for promethous otherwise there will be somany and our prom will be bloated
+
         let contextRoute = req.route ? (req.baseUrl + req.route.path) : '';
 
 

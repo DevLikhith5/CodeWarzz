@@ -120,6 +120,100 @@ export class ContestService {
     async getContestProblems(contestId: string) {
         return await contestRepository.getContestProblems(contestId);
     }
+
+    async getContestLeaderboard(contestId: string) {
+        const contest = await contestRepository.getContestById(contestId);
+        if (!contest) throw new Error("Contest not found");
+
+        const submissions = await contestRepository.getContestSubmissionsForLeaderboard(contestId);
+        const problems = await contestRepository.getContestProblems(contestId);
+
+        // Map problems for easy lookup and ordering
+        const problemMap = new Map(problems.map(p => [p.id, p]));
+
+
+        const userStats = new Map<string, {
+            userId: string;
+            username: string;
+            score: number;
+            totalTimeMs: number;
+            problemStats: Record<string, { solved: boolean; attempts: number; timeMs: number }>;
+        }>();
+
+        for (const submission of submissions) {
+            if (!userStats.has(submission.userId)) {
+                userStats.set(submission.userId, {
+                    userId: submission.userId,
+                    username: submission.user.username,
+                    score: 0,
+                    totalTimeMs: 0,
+                    problemStats: {}
+                });
+            }
+
+            const stats = userStats.get(submission.userId)!;
+            const problemId = submission.problemId;
+
+            // Initialize problem stat if not exists
+            if (!stats.problemStats[problemId]) {
+                stats.problemStats[problemId] = { solved: false, attempts: 0, timeMs: 0 };
+            }
+
+            const pStat = stats.problemStats[problemId];
+
+            if (pStat.solved) continue; // Already solved, ignore further submissions
+
+            if (submission.verdict === 'AC') {
+                pStat.solved = true;
+                pStat.attempts += 1;
+
+                // Calculate time taken from contest start
+                const submissionTime = new Date(submission.createdAt).getTime();
+                const startTime = new Date(contest.startTime).getTime();
+                const timeTaken = Math.max(0, submissionTime - startTime);
+                pStat.timeMs = timeTaken;
+
+                // Update total stats
+                const problem = problemMap.get(problemId);
+                if (problem) {
+                    stats.score += (problem as any).maxScore || 100; // Default 100 if maxScore missing
+                }
+                stats.totalTimeMs += timeTaken;
+
+                // Add penalty for wrong attempts (e.g. AC on 3rd try = 2 wrong attempts)
+                // Assuming 10 minutes (600000ms) penalty per wrong attempt
+                // pStat.attempts includes the successful one, so wrong attempts = attempts - 1
+                stats.totalTimeMs += (pStat.attempts - 1) * 600000;
+
+            } else {
+                pStat.attempts += 1;
+            }
+        }
+
+        const leaderboard = Array.from(userStats.values()).sort((a, b) => {
+            if (b.score !== a.score) return b.score - a.score; // Higher score first
+            return a.totalTimeMs - b.totalTimeMs; // Lower time first
+        });
+
+        // Add rank
+        const leaderboardWithRank = leaderboard.map((entry, index) => ({
+            rank: index + 1,
+            ...entry,
+            timeFormatted: (() => {
+                const seconds = Math.floor(entry.totalTimeMs / 1000);
+                const h = Math.floor(seconds / 3600);
+                const m = Math.floor((seconds % 3600) / 60);
+                const s = seconds % 60;
+                return `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+            })()
+        }));
+
+        return {
+            contestId,
+            problems: problems.map(p => ({ id: p.id, title: p.title })),
+            leaderboard: leaderboardWithRank
+        };
+    }
 }
 
 export const contestService = new ContestService();

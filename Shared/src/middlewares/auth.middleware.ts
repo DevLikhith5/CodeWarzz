@@ -14,16 +14,22 @@ declare global {
     }
 }
 
-const JWT_SECRET = process.env.JWT_SECRET || 'default_secret_key_change_me';
-const INTERNAL_API_KEY = process.env.INTERNAL_API_KEY || 'default_internal_key';
+const JWT_SECRET = process.env.JWT_SECRET || 'JWT_SECRET';
+const INTERNAL_API_KEY = process.env.INTERNAL_API_KEY || 'INTERNAL_KEY';
 
 export const verifyToken = async (req: Request, res: Response, next: NextFunction) => {
-    const authHeader = req.headers.authorization;
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-        return next(new UnauthorizedError('No token provided'));
+    let token;
+
+    if (req.headers.authorization && req.headers.authorization.startsWith('Bearer ')) {
+        token = req.headers.authorization.split(' ')[1];
+    } else if (req.cookies && req.cookies.accessToken) {
+        console.log("I HIT THIS")
+        token = req.cookies.accessToken;
     }
 
-    const token = authHeader.split(' ')[1];
+    if (!token) {
+        return next(new UnauthorizedError('No token provided'));
+    }
 
     try {
         const decoded = jwt.verify(token, JWT_SECRET) as { id: string; role: string };
@@ -50,12 +56,17 @@ export const isAdmin = (req: Request, res: Response, next: NextFunction) => {
 };
 
 export const extractUser = async (req: Request, res: Response, next: NextFunction) => {
-    const authHeader = req.headers.authorization;
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-        return next();
+    let token;
+
+    if (req.headers.authorization && req.headers.authorization.startsWith('Bearer ')) {
+        token = req.headers.authorization.split(' ')[1];
+    } else if (req.cookies && req.cookies.accessToken) {
+        token = req.cookies.accessToken;
     }
 
-    const token = authHeader.split(' ')[1];
+    if (!token) {
+        return next();
+    }
 
     try {
         const decoded = jwt.verify(token, JWT_SECRET) as { id: string; role: string };

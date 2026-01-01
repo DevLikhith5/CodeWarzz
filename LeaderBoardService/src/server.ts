@@ -7,7 +7,7 @@ import { appErrorHandler, genericErrorHandler } from './middlewares/error.middle
 import morgan from 'morgan';
 import logger from './config/logger.config';
 import { metricsMiddleware } from '../../Shared/src/middlewares/metrics.middleware';
-import { requestContextMiddleware } from '../../Shared/src/middlewares/requestContext.middleware';
+import { correlationIdMiddleware } from '../../Shared/src/middlewares/correlation.middleware';
 import { startVerdictConsumer } from './queues/verdict/consumer.queue';
 
 const app = express();
@@ -21,7 +21,7 @@ const morganStream = {
 app.use(morgan("combined", { stream: morganStream }));
 app.use(express.json());
 
-app.use(requestContextMiddleware);
+app.use(correlationIdMiddleware);
 app.use(metricsMiddleware);
 app.use('/api/v1', v1Router);
 app.use('/api/v2', v2Router);

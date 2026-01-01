@@ -1,5 +1,5 @@
 import db from "../config/db";
-import { users } from "../db/schema/user";
+import { users, userDailyActivity } from "../db/schema/user";
 import { submissions } from "../db/schema/submission";
 import { problems } from "../db/schema/problems";
 import { eq, and, count, sql, desc } from "drizzle-orm";
@@ -108,6 +108,26 @@ export class UserRepository {
                 .groupBy(problems.id); // Group by Primary Key allows selecting other columns
 
             return results;
+        });
+    }
+
+    async incrementUserActivity(userId: string) {
+        return await observeDbQuery('incrementUserActivity', 'userDailyActivity', async () => {
+            const today = new Date();
+            today.setHours(0, 0, 0, 0); 
+
+            await db.insert(userDailyActivity).values({
+                userId,
+                date: today,
+                submissions: 1
+            })
+                .onConflictDoUpdate({
+                    target: [userDailyActivity.userId, userDailyActivity.date],
+                    set: {
+                        submissions: sql`${userDailyActivity.submissions} + 1`,
+                        updatedAt: new Date()
+                    }
+                });
         });
     }
 }

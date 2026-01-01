@@ -10,6 +10,7 @@ interface ValidationSchemas {
 
 export const validate = (schemas: ValidationSchemas | ZodSchema) => (req: Request, res: Response, next: NextFunction) => {
     try {
+        //if there is only zodSchema
         if ('parse' in schemas) {
             schemas.parse(req.body);
         } else {
@@ -27,6 +28,7 @@ export const validate = (schemas: ValidationSchemas | ZodSchema) => (req: Reques
             });
             return;
         }
+        //will go to generic error
         next(error);
     }
 };

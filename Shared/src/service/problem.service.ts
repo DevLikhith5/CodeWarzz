@@ -56,8 +56,8 @@ export class ProblemService {
         return await problemRepository.getProblemById(id);
     }
 
-    async getAllProblems() {
-        return await problemRepository.getAllProblems();
+    async getAllProblems(page: number, limit: number) {
+        return problemRepository.getAllProblems(page, limit);
     }
 }
 

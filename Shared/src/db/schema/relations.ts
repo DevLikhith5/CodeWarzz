@@ -1,18 +1,18 @@
 import { relations } from "drizzle-orm";
-import { users } from "./user";
+import { userDailyActivity, users } from "./user";
 import { submissions } from "./submission";
 import { contests, contestRegistrations, contestProblems } from "./contest";
 import { problems, testcases } from "./problems";
 import { leaderboardSnapshots } from "./leaderboard";
 
-
+//one to many
 export const usersRelations = relations(users, ({ many }) => ({
     submissions: many(submissions),
     registrations: many(contestRegistrations),
     leaderboardSnapshots: many(leaderboardSnapshots),
 }));
 
-
+//one to many
 export const contestsRelations = relations(contests, ({ many }) => ({
     submissions: many(submissions),
     registrations: many(contestRegistrations),
@@ -20,14 +20,14 @@ export const contestsRelations = relations(contests, ({ many }) => ({
     leaderboardSnapshots: many(leaderboardSnapshots),
 }));
 
-
+//one to many
 export const problemsRelations = relations(problems, ({ many }) => ({
     submissions: many(submissions),
     testcases: many(testcases),
     contests: many(contestProblems), 
 }));
 
-
+//many to one
 export const submissionsRelations = relations(submissions, ({ one }) => ({
     user: one(users, {
         fields: [submissions.userId],
@@ -43,7 +43,7 @@ export const submissionsRelations = relations(submissions, ({ one }) => ({
     }),
 }));
 
-
+//many to one
 export const contestRegistrationsRelations = relations(contestRegistrations, ({ one }) => ({
     contest: one(contests, {
         fields: [contestRegistrations.contestId],
@@ -55,6 +55,7 @@ export const contestRegistrationsRelations = relations(contestRegistrations, ({ 
     }),
 }));
 
+//many to one
 export const contestProblemsRelations = relations(contestProblems, ({ one }) => ({
     contest: one(contests, {
         fields: [contestProblems.contestId],
@@ -66,7 +67,7 @@ export const contestProblemsRelations = relations(contestProblems, ({ one }) => 
     }),
 }));
 
-
+//many to one
 export const testcasesRelations = relations(testcases, ({ one }) => ({
     problem: one(problems, {
         fields: [testcases.problemId],
@@ -74,7 +75,7 @@ export const testcasesRelations = relations(testcases, ({ one }) => ({
     }),
 }));
 
-
+//many to one
 export const leaderboardSnapshotsRelations = relations(leaderboardSnapshots, ({ one }) => ({
     contest: one(contests, {
         fields: [leaderboardSnapshots.contestId],
@@ -82,6 +83,14 @@ export const leaderboardSnapshotsRelations = relations(leaderboardSnapshots, ({ 
     }),
     user: one(users, {
         fields: [leaderboardSnapshots.userId],
+        references: [users.id],
+    }),
+}));
+
+//many to one
+export const userDailyActivityRelations = relations(userDailyActivity, ({ one }) => ({
+    user: one(users, {
+        fields: [userDailyActivity.userId],
         references: [users.id],
     }),
 }));

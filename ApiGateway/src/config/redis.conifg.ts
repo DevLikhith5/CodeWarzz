@@ -1,24 +1,31 @@
-import IoRedis, { Redis } from 'ioredis';
-import { serverConfig } from '.';
-import logger from './logger.config';
+import IoRedis, { Redis } from "ioredis";
+import { serverConfig } from ".";
+import logger from "./logger.config";
 
+class RedisClient {
+    private static instance: Redis | null = null;
 
-const connectToRedis = () => {
-    logger.info(`Inside Connecting To Redis ${serverConfig.REDIS_URL}`)
-    try {
-        let connection: Redis;
+    private constructor() {} 
 
-        return () => {
-            if (!connection) {
-                connection = new IoRedis(serverConfig.REDIS_URL, { maxRetriesPerRequest: null });
+    static getInstance(): Redis {
+        if (!RedisClient.instance) {
+            logger.info(`Connecting to Redis → ${serverConfig.REDIS_URL}`);
 
-            }
-            return connection;
+            RedisClient.instance = new IoRedis(serverConfig.REDIS_URL, {
+                maxRetriesPerRequest: null,
+            });
+
+            RedisClient.instance.on("connect", () =>
+                logger.info("Redis connected")
+            );
+
+            RedisClient.instance.on("error", (err) =>
+                logger.error("Redis error", { error: err })
+            );
         }
-    } catch (err) {
-        logger.error(`Error connecting to redis`, { error: err });
-        throw err;
+
+        return RedisClient.instance;
     }
 }
 
-export const getRedisConnObject = connectToRedis();
+export const redis = RedisClient.getInstance();

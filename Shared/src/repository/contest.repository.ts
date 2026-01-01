@@ -2,7 +2,7 @@
 import db from "../config/db";
 import { contests, contestProblems, contestRegistrations } from "../db/schema/contest";
 import { submissions } from "../db/schema/submission";
-import { eq, and, count, gt, lt, gte, lte, inArray } from "drizzle-orm";
+import { eq, and, or, count, gt, lt, gte, lte, inArray } from "drizzle-orm";
 import { cacheService } from "../service/cache.service";
 
 export type ContestInsert = typeof contests.$inferInsert;
@@ -32,42 +32,47 @@ export class ContestRepository {
             const conditions = [];
 
             if (filters.status) {
-                if (filters.status === 'upcoming') {
-                    conditions.push(gt(contests.startTime, now));
-                } else if (filters.status === 'ongoing') {
-                    conditions.push(and(lte(contests.startTime, now), gte(contests.endTime, now)));
-                } else if (filters.status === 'ended') {
-                    conditions.push(lt(contests.endTime, now));
+                switch (filters.status) {
+                    case 'upcoming':
+                        conditions.push(gt(contests.startTime, now));
+                        break;
+                    case 'ongoing':
+                        conditions.push(and(lte(contests.startTime, now), gte(contests.endTime, now)));
+                        break;
+                    case 'ended':
+                        conditions.push(lt(contests.endTime, now));
+                        break;
                 }
             }
 
             if ((filters.registered || filters.participated) && filters.userId) {
-                const allowedIds = new Set<string>();
+                const participationConditions = [];
 
-                // 1. Participated = User has SUBMISSIONS
                 if (filters.participated) {
-                    const submittedContests = await db.select({ id: submissions.contestId })
-                        .from(submissions)
-                        .where(eq(submissions.userId, filters.userId));
-
-                    submittedContests.forEach(s => {
-                        if (s.id) allowedIds.add(s.id);
-                    });
+                    participationConditions.push(
+                        inArray(
+                            contests.id,
+                            db.select({ id: submissions.contestId })
+                                .from(submissions)
+                                .where(eq(submissions.userId, filters.userId))
+                        )
+                    );
                 }
 
-                // 2. Registered = User has REGISTRATIONS
                 if (filters.registered) {
-                    const registeredContests = await db.select({
-                        id: contestRegistrations.contestId
-                    })
-                        .from(contestRegistrations)
-                        .where(eq(contestRegistrations.userId, filters.userId));
-
-                    registeredContests.forEach(r => allowedIds.add(r.id));
+                    participationConditions.push(
+                        inArray(
+                            contests.id,
+                            db.select({ id: contestRegistrations.contestId })
+                                .from(contestRegistrations)
+                                .where(eq(contestRegistrations.userId, filters.userId))
+                        )
+                    );
                 }
 
-                if (allowedIds.size === 0) return [];
-                conditions.push(inArray(contests.id, Array.from(allowedIds)));
+                if (participationConditions.length > 0) {
+                    conditions.push(or(...participationConditions));
+                }
             }
 
             return await db.query.contests.findMany({
@@ -147,7 +152,8 @@ export class ContestRepository {
                 id: row.problem.id,
                 title: row.problem.title,
                 difficulty: row.problem.difficulty,
-                slug: row.problem.slug
+                slug: row.problem.slug,
+                maxScore: row.problem.maxScore
             }));
 
             await cacheService.set(cacheKey, problems, 300);
@@ -206,6 +212,29 @@ export class ContestRepository {
                 counts[row.contestId] = row.count;
             }
             return counts;
+        });
+    }
+    async getContestSubmissionsForLeaderboard(contestId: string) {
+        return await observeDbQuery('getContestSubmissionsForLeaderboard', 'submissions', async () => {
+            return await db.query.submissions.findMany({
+                where: eq(submissions.contestId, contestId),
+                with: {
+                    user: {
+                        columns: {
+                            id: true,
+                            username: true
+                        }
+                    },
+                    problem: {
+                        columns: {
+                            id: true,
+                            maxScore: true,
+                            title: true
+                        }
+                    }
+                },
+                orderBy: (submissions, { asc }) => [asc(submissions.createdAt)]
+            });
         });
     }
 }

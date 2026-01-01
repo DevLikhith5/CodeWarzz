@@ -1,15 +1,18 @@
 import { z } from "zod";
 
+
 export const createContestSchema = {
-    body: z.object({
-        title: z.string().min(3),
-        description: z.string(),
-        startTime: z.string().datetime().or(z.date()),
-        endTime: z.string().datetime().or(z.date()),
-    }).refine((data) => data.startTime < data.endTime, {
-        message: "Start time must be before end time",
-        path: ["endTime"],
-    })
+  body: z.object({
+    title: z.string().min(3),
+    description: z.string(),
+
+    startTime: z.preprocess((val) => val ? new Date(val as string) : null, z.date()),
+    endTime: z.preprocess((val) => val ? new Date(val as string) : null, z.date()),
+  })
+  .refine((data) => data.startTime < data.endTime, {
+    message: "Start time must be before end time",
+    path: ["endTime"],
+  }),
 };
 
 export const addProblemToContestSchema = {

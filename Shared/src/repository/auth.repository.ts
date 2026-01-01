@@ -15,6 +15,14 @@ export class AuthRepository {
         });
     }
 
+    async findUserById(id: string) {
+        return await observeDbQuery('findUserById', 'users', async () => {
+            return await db.query.users.findFirst({
+                where: eq(users.id, id)
+            });
+        });
+    }
+
     async createUser(userData: CreateUserParams) {
         return await observeDbQuery('createUser', 'users', async () => {
             const [newUser] = await db.insert(users).values(userData).returning();

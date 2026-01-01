@@ -21,15 +21,18 @@ const morganStream = {
 app.use(morgan("combined", { stream: morganStream }));
 app.use(express.json());
 
+import cookieParser from 'cookie-parser';
+app.use(cookieParser());
+
 import { metricsMiddleware } from './middlewares/metrics.middleware';
 
 /**
  * Registering all the routers and their corresponding routes with out app server object.
  */
 
-import { requestContextMiddleware } from './middlewares/requestContext.middleware';
+import { correlationIdMiddleware } from './middlewares/correlation.middleware';
 
-app.use(requestContextMiddleware);
+app.use(correlationIdMiddleware);
 app.use(metricsMiddleware);
 app.use('/api/v1', v1Router);
 app.use('/api/v2', v2Router);

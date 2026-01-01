@@ -1,16 +1,28 @@
 import { Router } from 'express';
-import { signUp, signIn, refreshToken } from '../../controllers/auth.controller';
+import {
+    signUp, signIn, refreshToken,
+    googleCallBack,
+    googleSignin,
+    logout
+} from '../../controllers/auth.controller';
 
 import { verifyToken } from '../../middlewares/auth.middleware';
 
 import { validate } from '../../middlewares/validate.middleware';
-import { registerSchema, loginSchema } from '../../dtos/auth.dto';
+import { registerSchema, loginSchema, refreshTokenSchema } from '../../dtos/auth.dto';
 
 const authRouter = Router();
 
 authRouter.post('/signup', validate(registerSchema), signUp);
 authRouter.post('/signin', validate(loginSchema), signIn);
-authRouter.post('/refresh', refreshToken);
+authRouter.post('/refresh',validate(refreshTokenSchema), refreshToken);
+
+authRouter.get('/google/signin', googleSignin)
+//callback url 
+authRouter.get('/google/callback', googleCallBack)
+
+authRouter.post('/logout', logout);
+
 import { metricsService } from '../../service/metrics.service';
 
 authRouter.get('/me', verifyToken, (req, res) => {

@@ -101,3 +101,15 @@ export const getContestProblems = async (req: Request, res: Response) => {
         res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ error: (error as Error).message });
     }
 };
+
+export const getContestLeaderboard = async (req: Request, res: Response) => {
+    try {
+        const contestId = req.params.id;
+        const leaderboard = await contestService.getContestLeaderboard(contestId);
+        metricsService.getContestEventsTotal().inc({ event: 'view_leaderboard', status: 'success' });
+        successResponse(res, leaderboard);
+    } catch (error) {
+        metricsService.getContestEventsTotal().inc({ event: 'view_leaderboard', status: 'failure' });
+        res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ error: (error as Error).message });
+    }
+};

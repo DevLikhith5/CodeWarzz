@@ -16,6 +16,6 @@ loadEnv();
 
 export const serverConfig: ServerConfig = {
     PORT: Number(process.env.PORT) || 3001,
-    DB_URL: process.env.DB_URL || 'postgresql://postgres:postgres@localhost:5432/codewarz',
+    DB_URL: process.env.DATABASE_URL || process.env.DB_URL || 'postgresql://postgres:postgres@localhost:5432/codewarz',
     REDIS_URL: process.env.REDIS_URL || 'redis://localhost:6379'
 };

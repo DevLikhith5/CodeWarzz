@@ -1,7 +1,9 @@
 import { submissionRepository, SubmissionInsert } from "../repository/submission.repository";
 import { contestRepository } from "../repository/contest.repository";
 import { submissionQueue } from "../queues/submission.queue";
+import { userRepository } from "../repository/user.repository";
 import { ForbiddenError } from "../utils/errors/app.error";
+import logger from "../config/logger.config";
 import { v4 as uuidv4 } from 'uuid';
 
 export type CreateSubmissionDTO = Omit<SubmissionInsert, 'id' | 'createdAt'>;
@@ -27,10 +29,8 @@ export class SubmissionService {
             }
         }
 
-        const existingSubmission = await submissionRepository.getSubmissionByProblemId(data.userId || "", data.problemId);
-        if (existingSubmission && existingSubmission.verdict === "AC") {
-            // return existingSubmission; // Allow resubmission
-        }
+
+
 
         const submission = await submissionRepository.createSubmission(data);
 
@@ -46,11 +46,21 @@ export class SubmissionService {
 
         await submissionQueue.add('evaluate-submission', payload);
 
+        if (data.userId) {
+            userRepository.incrementUserActivity(data.userId).catch(err => {
+                logger.error(`Failed to update user activity for ${data.userId}`, err);
+            });
+        }
+
         return submission;
     }
 
     async getSubmission(id: string) {
         return await submissionRepository.getSubmissionById(id);
+    }
+
+    async getBestSubmission(userId: string, problemId: string) {
+        return await submissionRepository.getBestSubmission(userId, problemId);
     }
 
     async getSubmissions(filters: { userId?: string, problemId?: string, contestId?: string }, limit?: number, offset?: number) {
@@ -93,6 +103,7 @@ export class SubmissionService {
     }
 
     async getRunResult(jobId: string) {
+        //we need to do this because we wont store these runs in db they weill be temporatry in 
         const job = await submissionQueue.getJob(jobId);
         if (!job) {
             return null;

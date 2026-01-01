@@ -1,7 +1,7 @@
 import { Queue } from 'bullmq';
 import { metricsService } from './metrics.service';
 import logger from '../config/logger.config';
-import { getRedisConnObject } from '../config/redis.config';
+import { redis as connection} from '../config/redis.config';
 
 class QueueMonitorService {
     private isMonitoring = false;
@@ -13,7 +13,7 @@ class QueueMonitorService {
         }
 
         logger.info("Starting Queue Monitor Service...");
-        const connection = getRedisConnObject();
+
 
         this.monitorQueue('submission-queue', connection);
         this.monitorQueue('leaderboard-queue', connection);

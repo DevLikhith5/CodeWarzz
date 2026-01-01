@@ -1,9 +1,9 @@
-import { getRedisConnObject } from "../config/redis.config";
+import { redis } from "../config/redis.config";
 
 import { metricsService } from "./metrics.service";
 
 class CacheService {
-    private redis = getRedisConnObject();
+    private redis = redis;
 
     async get<T>(key: string): Promise<T | null> {
         const end = metricsService.getRedisOperationDuration().startTimer({ command: 'get' });

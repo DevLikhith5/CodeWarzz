@@ -17,9 +17,12 @@ export const createProblemController = async (req: Request, res: Response, next:
 
 export const getProblemsController = async (req: Request, res: Response, next: NextFunction) => {
     try {
-        const problems = await problemService.getAllProblems();
+        const page = parseInt(req.query.page as string) || 1;
+        const limit = parseInt(req.query.limit as string) || 10;
+
+        const result = await problemService.getAllProblems(page, limit);
         metricsService.getProblemEventsTotal().inc({ event: 'list_problems', status: 'success' });
-        successResponse(res, problems);
+        successResponse(res, result);
     } catch (error) {
         metricsService.getProblemEventsTotal().inc({ event: 'list_problems', status: 'failure' });
         next(error);

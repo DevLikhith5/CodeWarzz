@@ -1,6 +1,6 @@
 import db from "../config/db";
 import { submissions } from "../db/schema/submission";
-import { InferInsertModel, eq, desc, and, SQL } from "drizzle-orm";
+import { InferInsertModel, eq, desc, asc, and, SQL } from "drizzle-orm";
 
 export type SubmissionInsert = InferInsertModel<typeof submissions>;
 
@@ -35,6 +35,26 @@ export class SubmissionRepository {
             return await db.query.submissions.findFirst({
                 where: and(eq(submissions.userId, userId), eq(submissions.problemId, problemId)),
                 orderBy: [desc(submissions.createdAt)]
+            });
+        });
+    }
+
+    async getBestSubmission(userId: string, problemId: string) {
+        return await observeDbQuery('getBestSubmission', 'submissions', async () => {
+            return await db.query.submissions.findFirst({
+                where: and(
+                    eq(submissions.userId, userId),
+                    eq(submissions.problemId, problemId),
+                    eq(submissions.verdict, 'AC')
+                ),
+                orderBy: [
+                    // Primary sort: Lowest time
+                    // Secondary sort: Lowest memory
+                    // Tertiary sort: Newest (break ties with latest optimal)
+                    asc(submissions.timeTakenMs),
+                    asc(submissions.memoryUsedMb),
+                    desc(submissions.createdAt)
+                ]
             });
         });
     }

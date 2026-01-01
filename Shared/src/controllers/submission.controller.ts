@@ -17,6 +17,7 @@ export const submitController = async (req: Request, res: Response, next: NextFu
             passedTestcases: 0,
             totalTestcases: 0
         });
+
         successResponse(res, { submissionId: submission.id }, 'Submission received', StatusCodes.CREATED);
     } catch (error) {
         next(error);
@@ -88,6 +89,31 @@ export const updateSubmissionController = async (req: Request, res: Response, ne
         const { id } = req.params;
         const submission = await submissionService.updateSubmission(id, req.body);
         successResponse(res, submission, 'Submission updated successfully');
+    } catch (error) {
+        next(error);
+    }
+};
+export const getBestSubmissionController = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        const userId = req.user?.id;
+        const { problemId } = req.query;
+
+        if (!userId || !problemId) {
+            res.status(StatusCodes.BAD_REQUEST).json({ message: 'Missing userId or problemId' });
+            return;
+        }
+
+        const submission = await submissionService.getBestSubmission(userId, problemId as string);
+
+        if (!submission) {
+            // It is common to return specific code or just null/404 if no best submission exists
+            // but 200 with null is also fine depending on frontend.
+            // Let's return 404 for consistency with "not found"
+            res.status(StatusCodes.NOT_FOUND).json({ message: 'No accepted submission found' });
+            return;
+        }
+
+        successResponse(res, submission);
     } catch (error) {
         next(error);
     }

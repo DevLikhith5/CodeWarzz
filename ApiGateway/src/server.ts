@@ -1,11 +1,12 @@
 import "dotenv/config";
-import express from "express";
+import express, { Request, Response } from "express";
 import proxy from "express-http-proxy";
 import cors from "cors";
 import helmet from "helmet";
 import morgan from 'morgan';
 import { rateLimiter } from "./middlewares/rateLimiter";
-import { requestContextMiddleware } from "../../Shared/src/middlewares/requestContext.middleware";
+import { correlationIdMiddleware } from "../../Shared/src/middlewares/correlation.middleware";
+
 import { metricsService } from "../../Shared/src/service/metrics.service";
 import logger from "./config/logger.config";
 
@@ -18,7 +19,10 @@ const LEADERBOARD_SERVICE_URL = process.env.LEADERBOARD_SERVICE_URL || "http://l
 
 
 app.use(helmet());
-app.use(cors());
+app.use(cors({
+    origin: process.env.FRONTEND_URL || "http://localhost:8080",
+    credentials: true
+}));
 const morganStream = {
     write: (message: string) => {
         logger.info(message.trim());
@@ -27,27 +31,30 @@ const morganStream = {
 
 app.use(morgan("combined", { stream: morganStream }));
 
+import cookieParser from 'cookie-parser';
+app.use(cookieParser());
+
 
 
 
 import { metricsMiddleware } from "../../Shared/src/middlewares/metrics.middleware";
 
-app.use(requestContextMiddleware as unknown as express.RequestHandler);
-app.use(metricsMiddleware as unknown as express.RequestHandler);
+app.use(correlationIdMiddleware);
+app.use(metricsMiddleware);
 
 app.use(rateLimiter({
-    maxTokens: 20,
-    refillRate: 20 / 60,
+    maxTokens: 50,
+    refillRate: 50 / 60,
 }));
 
 
-app.get("/metrics", async (req, res) => {
+app.get("/metrics", async (req:Request, res:Response):Promise<void> => {
     res.set('Content-Type', metricsService.getRegistry().contentType);
     res.end(await metricsService.getRegistry().metrics());
 });
 
 
-app.get("/health", (req, res) => {
+app.get("/health", (req:Request, res:Response):void => {
     res.json({ status: "UP", service: "API Gateway" });
 });
 
@@ -55,7 +62,11 @@ app.get("/health", (req, res) => {
 
 app.use("/api/v1/leaderboard/live", proxy(LEADERBOARD_SERVICE_URL, {
     proxyReqOptDecorator: (proxyReqOpts, srcReq) => {
-        proxyReqOpts.headers = { ...proxyReqOpts.headers, "x-correlation-id": srcReq.headers["x-correlation-id"] };
+        proxyReqOpts.headers = {
+            ...proxyReqOpts.headers,
+            ...(srcReq.headers["x-correlation-id"] && { "x-correlation-id": srcReq.headers["x-correlation-id"] }),
+            ...(srcReq.headers.cookie && { "Cookie": srcReq.headers.cookie })
+        };
         return proxyReqOpts;
     },
     proxyReqPathResolver: (req) => {
@@ -66,8 +77,8 @@ app.use("/api/v1/leaderboard/live", proxy(LEADERBOARD_SERVICE_URL, {
         logger.error(`Proxy error: ${err.message}`, { error: err });
         res.status(503).json({
             success: false,
-            message: "Service Unavailable",
-            error: err.code || "SERVICE_UNAVAILABLE"
+            message: "Leaderboard Service Unavailable",
+            error: err.code || "LEADERBOARD_SERVICE_UNAVAILABLE"
         });
     }
 }));
@@ -75,7 +86,11 @@ app.use("/api/v1/leaderboard/live", proxy(LEADERBOARD_SERVICE_URL, {
 
 app.use("/api/v1/leaderboard/archive", proxy(SHARED_SERVICE_URL, {
     proxyReqOptDecorator: (proxyReqOpts, srcReq) => {
-        proxyReqOpts.headers = { ...proxyReqOpts.headers, "x-correlation-id": srcReq.headers["x-correlation-id"] };
+        proxyReqOpts.headers = {
+            ...proxyReqOpts.headers,
+            ...(srcReq.headers["x-correlation-id"] && { "x-correlation-id": srcReq.headers["x-correlation-id"] }),
+            ...(srcReq.headers.cookie && { "Cookie": srcReq.headers.cookie })
+        };
         return proxyReqOpts;
     },
     proxyReqPathResolver: (req) => {
@@ -85,14 +100,19 @@ app.use("/api/v1/leaderboard/archive", proxy(SHARED_SERVICE_URL, {
         logger.error(`Proxy error: ${err.message}`, { error: err });
         res.status(503).json({
             success: false,
-            message: "Service Unavailable",
-            error: err.code || "SERVICE_UNAVAILABLE"
+            message: "Shared Service Unavailable",
+            error: err.code || "SHARED_SERVICE_UNAVAILABLE"
         });
     }
 }));
+
 app.use("/api/v1", proxy(SHARED_SERVICE_URL, {
     proxyReqOptDecorator: (proxyReqOpts, srcReq) => {
-        proxyReqOpts.headers = { ...proxyReqOpts.headers, "x-correlation-id": srcReq.headers["x-correlation-id"] };
+        proxyReqOpts.headers = {
+            ...proxyReqOpts.headers,
+            ...(srcReq.headers["x-correlation-id"] && { "x-correlation-id": srcReq.headers["x-correlation-id"] }),
+            ...(srcReq.headers.cookie && { "Cookie": srcReq.headers.cookie })
+        };
         return proxyReqOpts;
     },
     proxyReqPathResolver: (req) => {
@@ -102,16 +122,16 @@ app.use("/api/v1", proxy(SHARED_SERVICE_URL, {
         logger.error(`Proxy error: ${err.message}`, { error: err });
         res.status(503).json({
             success: false,
-            message: "Service Unavailable",
-            error: err.code || "SERVICE_UNAVAILABLE"
+            message: "Shared Service Unavailable",
+            error: err.code || "SHARED_SERVICE_UNAVAILABLE"
         });
     }
 }));
 
 import { appErrorHandler, genericErrorHandler } from "../../Shared/src/middlewares/error.middleware";
 
-app.use(appErrorHandler as unknown as express.ErrorRequestHandler);
-app.use(genericErrorHandler as unknown as express.ErrorRequestHandler);
+app.use(appErrorHandler);
+app.use(genericErrorHandler);
 
 app.listen(PORT, () => {
     logger.info(`API Gateway is running on http://localhost:${PORT}`);

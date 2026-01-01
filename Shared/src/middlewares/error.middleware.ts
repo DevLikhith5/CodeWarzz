@@ -6,6 +6,10 @@ import { metricsService } from "../service/metrics.service";
 
 export const appErrorHandler = (err: AppError, req: Request, res: Response, next: NextFunction) => {
 
+
+    if (!err.statusCode) {
+        return next(err);
+    }
     logger.error("App Error:", { error: err });
     metricsService.getAppErrorsTotal().inc({ type: 'AppError', code: err.statusCode || 500 });
 

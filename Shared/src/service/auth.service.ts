@@ -1,14 +1,16 @@
 import bcrypt from 'bcryptjs';
+import axios from 'axios';
 import jwt from 'jsonwebtoken';
 import { authRepository } from '../repository/auth.repository';
 import { ConflictError, UnauthorizedError, BadRequestError } from '../utils/errors/app.error';
+import { verifyIdToken } from '../utils/helpers/oAuth/verifyToken';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'default_secret_key_change_me';
-const REFRESH_SECRET = process.env.REFRESH_SECRET || 'default_refresh_secret_key_change_me';
+const JWT_SECRET = process.env.JWT_SECRET || 'JWT_SECRET';
+const REFRESH_SECRET = process.env.REFRESH_SECRET || 'REFRESH_SECRET';
 
 export class AuthService {
     private generateTokens(userId: string, role: string) {
-        const accessToken = jwt.sign({ id: userId, role }, JWT_SECRET, { expiresIn: '15m' });
+        const accessToken = jwt.sign({ id: userId, role }, JWT_SECRET, { expiresIn: '1m' });
         const refreshToken = jwt.sign({ id: userId }, REFRESH_SECRET, { expiresIn: '7d' });
         return { accessToken, refreshToken };
     }
@@ -51,7 +53,15 @@ export class AuthService {
         const tokens = this.generateTokens(user.id, user.role);
         await authRepository.updateRefreshToken(user.id, tokens.refreshToken);
 
-        return tokens;
+        return {
+            ...tokens,
+            user: {
+                id: user.id,
+                username: user.username,
+                email: user.email,
+                role: user.role
+            }
+        };
     }
 
     async refreshToken(token: string) {
@@ -73,7 +83,76 @@ export class AuthService {
         const tokens = this.generateTokens(user.id, user.role);
         await authRepository.updateRefreshToken(user.id, tokens.refreshToken);
 
-        return tokens;
+        return {
+            ...tokens,
+            user: {
+                id: user.id,
+                username: user.username,
+                email: user.email,
+                role: user.role
+            }
+        };
+    }
+    async googleCallBack(code: string) {
+        const client_id = process.env.GOOGLE_CLIENT_ID;
+        const client_secret = process.env.GOOGLE_CLIENT_SECRET;
+        const redirect_uri = process.env.GOOGLE_REDIRECT_URI;
+
+        const tokenUrl = 'https://oauth2.googleapis.com/token';
+
+        try {
+            const { data } = await axios.post(tokenUrl, {
+                client_id,
+                client_secret,
+                code,
+                grant_type: 'authorization_code',
+                redirect_uri
+            });
+
+            const { id_token } = data;
+
+            const payload = await verifyIdToken(id_token);
+            if (payload == undefined || payload.email == undefined) {
+                throw new UnauthorizedError('Invalid token');
+            }
+
+            const { email, name } = payload;
+            
+
+            let user = await authRepository.findUserByEmail(email);
+
+            if (!user) {
+                const randomPassword = Math.random().toString(36).slice(-8) + Math.random().toString(36).slice(-8);
+                const hashedPassword = await bcrypt.hash(randomPassword, 10);
+
+                user = await authRepository.createUser({
+                    username: name || email.split('@')[0],
+                    email,
+                    passwordHash: hashedPassword,
+                    role: 'user',
+                });
+            }
+
+            const tokens = this.generateTokens(user.id, user.role);
+            await authRepository.updateRefreshToken(user.id, tokens.refreshToken);
+
+            return {
+                ...tokens,
+                user: {
+                    id: user.id,
+                    username: user.username,
+                    email: user.email,
+                    role: user.role
+                }
+            };
+
+        } catch (error) {
+            if (axios.isAxiosError(error)) {
+                console.error("Google Auth Error:", error.response?.data);
+                throw new BadRequestError('Failed to authenticate with Google');
+            }
+            throw error;
+        }
     }
 }
 

@@ -7,7 +7,8 @@ import {
     addProblemToContest,
     registerForContest,
     deregisterForContest,
-    getContestProblems
+    getContestProblems,
+    getContestLeaderboard
 } from "../../controllers/contest.controller";
 import { verifyToken, isAdmin, extractUser } from "../../middlewares/auth.middleware";
 
@@ -29,5 +30,6 @@ contestRouter.get("/:id", extractUser, validate({ params: contestIdSchema }), ge
 contestRouter.post("/:id/register", verifyToken, validate(registerContestSchema), registerForContest);
 contestRouter.post("/:id/deregister", verifyToken, validate(registerContestSchema), deregisterForContest);
 contestRouter.get("/:id/problems", verifyToken, validate({ params: contestIdSchema }), getContestProblems);
+contestRouter.get("/:id/leaderboard", validate({ params: contestIdSchema }), getContestLeaderboard);
 
 export default contestRouter;

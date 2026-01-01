@@ -51,6 +51,6 @@ export const getSubmissionsSchema = {
         contestId: z.string().uuid().optional(),
         limit: z.string().regex(/^\d+$/).transform(Number).optional(),
         offset: z.string().regex(/^\d+$/).transform(Number).optional(),
-        userId: z.string().uuid().optional() // Useful for filtering
+        userId: z.string().uuid().optional()    
     })
 };

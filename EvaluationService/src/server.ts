@@ -6,7 +6,7 @@ import v2Router from './routers/v2/index.router';
 import { appErrorHandler, genericErrorHandler } from './middlewares/error.middleware';
 import morgan from 'morgan';
 import logger from './config/logger.config';
-import { requestContextMiddleware } from '../../Shared/src/middlewares/requestContext.middleware';
+import { correlationIdMiddleware } from '../../Shared/src/middlewares/correlation.middleware';
 import { metricsService } from '../../Shared/src/service/metrics.service';
 
 
@@ -22,7 +22,7 @@ app.use(morgan("combined", { stream: morganStream }));
 app.use(express.json());
 
 import { metricsMiddleware } from '../../Shared/src/middlewares/metrics.middleware';
-app.use(requestContextMiddleware);
+app.use(correlationIdMiddleware);
 app.use(metricsMiddleware);
 app.use('/api/v1', v1Router);
 app.use('/api/v2', v2Router);

@@ -1,8 +1,6 @@
 import { Request, Response, NextFunction } from "express";
-import { getRedisConnObject } from "../config/redis.conifg";
+import { redis } from "../config/redis.conifg";
 import logger from "../config/logger.config";
-
-const redis = getRedisConnObject();
 
 interface RateLimitConfig {
     maxTokens: number;
@@ -10,8 +8,8 @@ interface RateLimitConfig {
 }
 
 const DEFAULT_CONFIG: RateLimitConfig = {
-    maxTokens: 10,
-    refillRate: 10 / 60,
+    maxTokens: 50,
+    refillRate: 50 / 60,
 };
 
 

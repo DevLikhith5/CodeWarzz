@@ -3,16 +3,16 @@ import { getRedisConnObject } from "../../config/redis.config";
 import { runSandbox } from "../../sandbox/runSandbox";
 import { pushToLeaderboardQueue } from "../verdict/leaderboard.producer";
 import logger from "../../config/logger.config";
-import { asyncLocalStorage } from "../../../../Shared/src/utils/helpers/request.helpers";
-import { metricsService } from "../../../../Shared/src/service/metrics.service";
+import { asyncLocalStorage } from "../../../../core/src/utils/helpers/request.helpers";
+import { metricsService } from "../../../../core/src/service/metrics.service";
 
-const SHARED_SERVICE_URL = process.env.SHARED_SERVICE_URL || "http://localhost:3001";
+const CORE_SERVICE_URL = process.env.CORE_SERVICE_URL || "http://localhost:3000";
 const INTERNAL_API_KEY = process.env.INTERNAL_API_KEY || 'INTERNAL_KEY';
 
 
 
 const fetchProblemData = async (problemId: string) => {
-  const problemResponse = await fetch(`${SHARED_SERVICE_URL}/api/v1/problems/${problemId}`);
+  const problemResponse = await fetch(`${CORE_SERVICE_URL}/api/v1/problems/${problemId}`);
   if (!problemResponse.ok) {
     throw new Error(`Failed to fetch problem ${problemId}: ${problemResponse.statusText}`);
   }
@@ -45,7 +45,7 @@ const prepareTestcases = (isRunOnly: boolean, customTestcases: any[], problem: a
 
 const persistSubmission = async (submissionId: string, evaluationResult: any) => {
   try {
-    const persistResponse = await fetch(`${SHARED_SERVICE_URL}/api/v1/submissions/${submissionId}`, {
+    const persistResponse = await fetch(`${CORE_SERVICE_URL}/api/v1/submissions/${submissionId}`, {
       method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',
@@ -81,7 +81,7 @@ const calculateTimeTaken = async (contestId: string | undefined, submissionCreat
 
   if (contestId && submissionCreatedAt) {
     // Fetch contest start time to calculate penalty
-    const contestResponse = await fetch(`${SHARED_SERVICE_URL}/api/v1/contests/${contestId}`);
+    const contestResponse = await fetch(`${CORE_SERVICE_URL}/api/v1/contests/${contestId}`);
     if (contestResponse.ok) {
       const contestDataJson = await contestResponse.json() as any;
       const contest = contestDataJson.data;

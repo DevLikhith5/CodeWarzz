@@ -6,8 +6,8 @@ import v2Router from './routers/v2/index.router';
 import { appErrorHandler, genericErrorHandler } from './middlewares/error.middleware';
 import morgan from 'morgan';
 import logger from './config/logger.config';
-import { metricsMiddleware } from '../../Shared/src/middlewares/metrics.middleware';
-import { correlationIdMiddleware } from '../../Shared/src/middlewares/correlation.middleware';
+import { metricsMiddleware } from '../../core/src/middlewares/metrics.middleware';
+import { correlationIdMiddleware } from '../../core/src/middlewares/correlation.middleware';
 import { startVerdictConsumer } from './queues/verdict/consumer.queue';
 
 const app = express();
@@ -34,14 +34,14 @@ app.use('/api/v2', v2Router);
 app.use(appErrorHandler);
 app.use(genericErrorHandler);
 
-import { queueMonitorService } from '../../Shared/src/service/queueMonitor.service';
+import { queueMonitorService } from '../../core/src/service/queueMonitor.service';
 import { getRedisConnObject } from './config/redis.config';
 queueMonitorService.monitorQueue("leaderboard-queue", getRedisConnObject());
 
 startVerdictConsumer();
 
 
-import { metricsService } from '../../Shared/src/service/metrics.service';
+import { metricsService } from '../../core/src/service/metrics.service';
 
 app.get("/metrics", async (req, res) => {
     res.set('Content-Type', metricsService.getRegistry().contentType);

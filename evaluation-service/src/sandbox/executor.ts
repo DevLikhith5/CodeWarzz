@@ -3,6 +3,8 @@ import { Workspace } from "./workspace";
 import { LanguageConfig } from "./languageConfig";
 import logger from "../config/logger.config";
 
+import path from "path";
+
 export interface Constraints {
   timeLimitMs: number;
   memoryLimitMb: number;
@@ -14,18 +16,40 @@ export function execute(
   lang: LanguageConfig,
   constraints: Constraints,
   commandToRun?: string
-): string {
+) {
   const startTime = Date.now();
   try {
     const timeLimitInSeconds = Math.ceil(constraints.timeLimitMs / 1000) + 2;
     const finalRunCommand = commandToRun || `${lang.runCommand} < input.txt`;
+
+    // HOST_WORKSPACES_ROOT should be the HOST machine's absolute path to the temp_workspaces folder
+    // This is required for Docker-in-Docker: the inner container mounts need to reference host paths
+    const hostWorkspacesRoot = process.env.HOST_WORKSPACES_ROOT;
+
+    // Get just the workspace folder name (e.g., "judge-c9ee82ed-8c54-4350-b609-42f0e133c237")
+    const workspaceFolderName = path.basename(workspace.dir);
+
+    logger.info(`[EXECUTOR] HOST_WORKSPACES_ROOT env var: '${hostWorkspacesRoot || 'NOT SET'}'`);
+    logger.info(`[EXECUTOR] Internal Workspace Dir: '${workspace.dir}'`);
+    logger.info(`[EXECUTOR] Workspace Folder Name: '${workspaceFolderName}'`);
+
+    let volumePath: string;
+    if (hostWorkspacesRoot) {
+      // Running in Docker: use the host path for the mount
+      volumePath = path.join(hostWorkspacesRoot, workspaceFolderName);
+      logger.info(`[EXECUTOR] Using HOST volume path: '${volumePath}'`);
+    } else {
+      // Running locally (not in Docker): use the workspace dir directly
+      volumePath = workspace.dir;
+      logger.warn(`[EXECUTOR] HOST_WORKSPACES_ROOT not set! Using internal path: '${volumePath}'`);
+    }
 
     const command = `docker run --rm \
        --network none \
        --memory ${constraints.memoryLimitMb}m \
        --cpus ${constraints.cpuLimit} \
        --pids-limit 64 \
-       -v ${workspace.dir}:/app \
+       -v ${volumePath}:/app \
        -w /app \
        ${lang.image} \
        sh -c "timeout ${timeLimitInSeconds} ${finalRunCommand}"`;

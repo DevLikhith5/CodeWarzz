@@ -20,4 +20,8 @@ v1Router.use('/submissions', submissionRouter);
 v1Router.use('/leaderboard', leaderboardRouter);
 v1Router.use('/users', userRouter);
 
+v1Router.get('/health', (req, res) => {
+    res.json({ status: "UP", service: "Core Service" });
+});
+
 export default v1Router;

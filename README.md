@@ -1,5 +1,8 @@
 # CodeWarz
 
+<img width="1920" height="1075" alt="image" src="https://github.com/user-attachments/assets/47c6f56b-0dc9-4afb-9960-5e8531c62f5f" />
+
+
 ![TypeScript](https://img.shields.io/badge/typescript-%23007ACC.svg?style=for-the-badge&logo=typescript&logoColor=white)
 ![Docker](https://img.shields.io/badge/docker-%230db7ed.svg?style=for-the-badge&logo=docker&logoColor=white)
 ![Redis](https://img.shields.io/badge/redis-%23DD0031.svg?style=for-the-badge&logo=redis&logoColor=white)

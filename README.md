@@ -1,89 +1,113 @@
-# CodeWarz Architecture
+# CodeWarz
 
-## System Overview
+![TypeScript](https://img.shields.io/badge/typescript-%23007ACC.svg?style=for-the-badge&logo=typescript&logoColor=white)
+![Docker](https://img.shields.io/badge/docker-%230db7ed.svg?style=for-the-badge&logo=docker&logoColor=white)
+![Redis](https://img.shields.io/badge/redis-%23DD0031.svg?style=for-the-badge&logo=redis&logoColor=white)
+![Postgres](https://img.shields.io/badge/postgres-%23316192.svg?style=for-the-badge&logo=postgresql&logoColor=white)
 
-CodeWarz is a distributed competitive programming platform built with a microservices-inspired architecture. It consists of several specialized services working together to handle user authentication, problem processing, code evaluation, and leaderboard management.
+CodeWarz is a distributed, high-performance competitive programming platform engineered for scale. It isolates user-submitted code in ephemeral, secure environments while maintaining sub-millisecond latency for real-time leaderboards.
 
-## Architecture Diagram
+The system is designed as a set of loosely coupled microservices, enabling independent scaling of the ingestion layer, execution engine, and real-time analytics subsystems.
+
+---
+
+## core Architecture
+
+The platform architecture divides responsibilities into specialized services to maximize throughput and fault tolerance.
 
 ```mermaid
 graph TD
-    %% Clients
-    Client([Client / User])
-
-    %% Gateway
-    subgraph Gateway Layer
-        AG[Api Gateway]
+    Client([User]) -->|HTTP/HTTPS| Gateway[API Gateway]
+    
+    subgraph Core Infrastructure
+        Gateway -->|Auth/Routing| Core[Core Service]
+        Gateway -->|Stats| Leaderboard[Leaderboard Service]
+        Gateway -->|Static Assets| Web["Frontend (Vite)"]
     end
 
-    %% Services
-    subgraph Service Layer
-        ES[Evaluation Service]
-        LS[LeaderBoard Service]
-        SS[Shared Library]
+    subgraph Async Processing
+        Core -->|Prod. Job| Redis[(Redis Queue)]
+        Redis -->|Cons. Job| Eval[Evaluation Service]
+        Eval -->|Update Verdict| Core
+        Eval -->|Update Rank| Leaderboard
     end
 
-    %% Infrastructure / Data
-    subgraph Data & Infrastructure
-        DB[(Postgres DB)]
-        Redis[(Redis Cache)]
-        Queue[[BullMQ / Redis]]
-        Loki[Loki / Grafana]
+    subgraph Sandboxing
+        Eval -->|Spawn| Docker[Sandbox Container]
+        Docker -->|Result| Eval
     end
 
-    %% Sandbox
-    subgraph Execution Environment
-        Sandbox[Docker Sandbox]
+    subgraph Persistence
+        Core --> Postgres[(PostgreSQL)]
+        Leaderboard --> RedisCache[(Redis Cache)]
     end
-
-    %% Relationships
-    Client -- HTTP Requests --> AG
-    
-    %% API Gateway Routing
-    AG -- Route: /submissions, /problems --> ES
-    AG -- Route: /leaderboard --> LS
-    AG -- Auth & Common Logic --> SS
-
-    %% CORE Library Usage
-    ES -. Uses .-> SS
-    LS -. Uses .-> SS
-    AG -. Uses .-> SS
-
-    %% Data Interactions
-    SS -- Read/Write --> DB
-    SS -- Metrics/Logs --> Loki
-    
-    %% Evaluation Flow
-    ES -- 1. Queue Submission --> Queue
-    ES -- 2. Consume Job --> Queue
-    ES -- 3. Execute Code --> Sandbox
-    Sandbox -- Return Result --> ES
-    ES -- 4. Store Result --> DB
-    
-    %% Leaderboard Flow
-    ES -- 5. Update Score --> Redis
-    LS -- Read Leaderboard --> Redis
-    
-    %% Styling
-    classDef service fill:#f9f,stroke:#333,stroke-width:2px;
-    classDef storage fill:#ff9,stroke:#333,stroke-width:2px;
-    classDef gateway fill:#9ff,stroke:#333,stroke-width:2px;
-    
-    class ES,LS,SS service;
-    class DB,Redis,Queue,Loki storage;
-    class AG gateway;
 ```
 
-## Service Descriptions
+### 1. Secure Code Execution (Sandboxing)
+Security is paramount when executing untrusted user code. CodeWarz implements a **Docker-in-Docker (DinD)** strategy:
+*   **Isolation**: Each submission runs in a fresh, ephemeral container with no network access.
+*   **Resource Control**: Strict CPU and Memory limits (cgroups) prevent denial-of-service attacks.
+*   **Host Protection**: Read-only volume mounts prevent users from modifying test cases or the execution environment.
 
-- **ApiGateway**: The entry point for all client requests, handling routing, rate limiting (potentially), and initial request validation.
-- **EvaluationService**: The core computation engine. It manages problem submissions, places them in a queue, and executes them securely within a Docker sandbox.
-- **LeaderBoardService**: Manages real-time leaderboards and user rankings, utilizing high-performance caching (Redis) for low-latency updates.
-- **Shared**: A common library containing shared business logic, database schemas (Drizzle ORM), repository patterns, and utility functions used across all services to ensure consistency.
+### 2. Event-Driven Evaluation Pipeline
+To handle traffic spikes during contests, the system uses an asynchronous job queue (BullMQ on Redis):
+*   **Decoupling**: The API accepts submissions immediately without waiting for execution.
+*   **Scalability**: The `Evaluation Service` is stateless. You can horizontally scale the number of worker replicas to process thousands of submissions per second.
+*   **Reliability**: Failed jobs are automatically retried or moved to a Dead Letter Queue (DLQ) for analysis.
 
-## Infrastructure
+### 3. Real-Time Analytics
+Leaderboards are powered by Redis Sorted Sets (ZSET), enabling $O(\log N)$ rank updates and retrieval. This allows the platform to broadcast live rank changes instantly as test cases pass.
 
-- **PostgreSQL**: Primary persistent storage for users, problems, submissions, and contests.
-- **Redis**: Used for both distributed job queues (BullMQ) and high-speed caching for leaderboards.
-- **Docker**: Provides isolated environments for safely executing user-submitted code.
-- **Grafana/Loki**: Centralized logging and monitoring solution.
+---
+
+## Technology Stack
+
+### Backend & Systems
+*   **Node.js & TypeScript**: Type-safe development across all microservices.
+*   **Docker & Docker Compose**: Complete containerization of services, databases, and sandbox environments.
+*   **PostgreSQL**: Relational storage for users, problems, and persistent submission history.
+*   **Redis**: High-performance backing for job queues and real-time leaderboards.
+*   **Prometheus & Loki**: Metrics scraping and distributed logging.
+
+### Frontend
+*   **React & Vite**: Modern, responsive user interface.
+*   **TailwindCSS**: Utility-first styling for rapid UI development.
+
+---
+
+## Infrastructure Setup
+
+The entire platform is fully containerized. A single command orchestrates the database, cache, gateway, and services.
+
+### Prerequisites
+*   Docker Desktop
+*   Node.js v18+ (for local development)
+
+### Quick Start
+
+```bash
+# 1. Clone the repository
+git clone https://github.com/DevLikhith5/CodeWarz.git
+cd CodeWarz
+
+# 2. Build and Start Services
+docker compose up --build -d
+
+# 3. Access the Application
+# Web UI: http://localhost:8080
+# API Gateway: http://localhost:3000
+```
+
+---
+
+## Engineering Design Decisions
+
+### Why Docker-in-Docker?
+We chose a DinD architecture to allow the `Evaluation Service` to programmatically spawn and destroy sibling containers on the host. This provides stronger isolation than process-level sandboxing (like `chroot`) while maintaining the flexibility to support multiple language runtimes (Python, C++, Java) simply by pulling different Docker images.
+
+### Why Microservices?
+Separating the **Core API** (CRUD, Auth) from the **Evaluation Engine** (CPU-intensive) ensures that browsing problems or checking the leaderboard remains snappy even when the judge is under heavy load.
+
+---
+
+Built by **Likhith**.

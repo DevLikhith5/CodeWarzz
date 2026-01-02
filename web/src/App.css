@@ -1,0 +1,5 @@
+/* App-specific styles - using design system tokens */
+#root {
+  max-width: 100%;
+  margin: 0 auto;
+}

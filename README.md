@@ -114,4 +114,14 @@ Separating the **Core API** (CRUD, Auth) from the **Evaluation Engine** (CPU-int
 
 ---
 
+---
+
+## License
+
+This project is **proprietary software**. All rights reserved.
+
+Unauthorized copying, modification, distribution, or use of this source code, via any medium, is strictly prohibited. This repository is for **demonstration purposes only**.
+
+---
+
 Built by **Likhith**.

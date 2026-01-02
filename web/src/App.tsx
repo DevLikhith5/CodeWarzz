@@ -5,22 +5,23 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 
 import { ThemeProvider } from "@/contexts/ThemeContext";
-import AuthGuard from "@/components/AuthGuard";
-import Index from "./pages/Index";
-import Auth from "./pages/Auth";
-import AuthCallback from "./pages/AuthCallback";
-import Dashboard from "./pages/Dashboard";
-import Problems from "./pages/Problems";
-import CreateProblem from "./pages/CreateProblem";
-import Problem from "./pages/Problem";
-import Profile from "./pages/Profile";
-import Leaderboard from "./pages/Leaderboard";
-import Contests from "./pages/Contests";
-import ContestDetail from "./pages/ContestDetail";
-import ContestProblem from "./pages/ContestProblem";
-import ContestLeaderboard from "./pages/ContestLeaderboard";
-import ContestResults from "./pages/ContestResults";
-import NotFound from "./pages/NotFound";
+import AuthGuard from "@/features/auth/components/AuthGuard";
+import Landing from "@/features/landing/routes/Landing";
+import Auth from "@/features/auth/routes/Auth";
+import AuthCallback from "@/features/auth/routes/AuthCallback";
+import Dashboard from "@/features/dashboard/routes/Dashboard";
+import Problems from "@/features/problems/routes/Problems";
+import CreateProblem from "@/features/problems/routes/CreateProblem";
+import Problem from "@/features/problems/routes/Problem";
+import Profile from "@/features/profile/routes/Profile";
+import Leaderboard from "@/features/leaderboard/routes/Leaderboard";
+import Contests from "@/features/contests/routes/Contests";
+import CreateContest from "@/features/contests/routes/CreateContest";
+import ContestDetail from "@/features/contests/routes/ContestDetail";
+import ContestProblem from "@/features/contests/routes/ContestProblem";
+import ContestLeaderboard from "@/features/contests/components/ContestLeaderboard";
+import ContestResults from "@/features/contests/routes/ContestResults";
+import NotFound from "@/pages/NotFound";
 
 const queryClient = new QueryClient();
 
@@ -32,7 +33,7 @@ const App = () => (
         <Sonner />
         <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
           <Routes>
-            <Route path="/" element={<Index />} />
+            <Route path="/" element={<Landing />} />
             <Route path="/auth" element={<Auth />} />
             <Route path="/auth/callback" element={<AuthCallback />} />
             {/* Protected Routes */}
@@ -43,6 +44,7 @@ const App = () => (
             <Route path="/profile" element={<AuthGuard><Profile /></AuthGuard>} />
             <Route path="/leaderboard" element={<AuthGuard><Leaderboard /></AuthGuard>} />
             <Route path="/contests" element={<AuthGuard><Contests /></AuthGuard>} />
+            <Route path="/contests/create" element={<AuthGuard><CreateContest /></AuthGuard>} />
             <Route path="/contest/:id" element={<AuthGuard><ContestDetail /></AuthGuard>} />
             <Route path="/contest/:id/problem/:problemId" element={<AuthGuard><ContestProblem /></AuthGuard>} />
             <Route path="/contest/:id/leaderboard" element={<AuthGuard><ContestLeaderboard /></AuthGuard>} />

@@ -52,20 +52,27 @@ export interface UserActivity {
 
 export class UserRepository {
     // Fetches full profile including some stats (based on userService.getUserProfile)
-    static async getProfile(): Promise<UserProfile> {
+    async getProfile(): Promise<UserProfile> {
         const response = await api.get('/users/profile');
         return response.data.data; // Assuming successResponse wrapper
     }
 
     // Fetches detailed stats
-    static async getStats(): Promise<UserStats> {
+    async getStats(): Promise<UserStats> {
         const response = await api.get('/users/stats');
         return response.data.data;
     }
 
     // Fetches activity history
-    static async getActivity(): Promise<UserActivity[]> {
+    async getActivity(): Promise<UserActivity[]> {
         const response = await api.get('/users/activity');
         return response.data.data;
     }
+
+    async getLastAttemptedProblem(): Promise<{ id: string, title: string, slug: string, difficulty: string } | null> {
+        const response = await api.get('/users/last-problem');
+        return response.data.data ? response.data.data.problem : null;
+    }
 }
+
+export const userRepository = new UserRepository();

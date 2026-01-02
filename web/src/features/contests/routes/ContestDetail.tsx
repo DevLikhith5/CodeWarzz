@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { Link, useParams } from "react-router-dom";
-import { AppNavbar } from "@/features/landing/components/AppNavbar";
+import { AppNavbar } from "@/components/layout/AppNavbar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Clock, Users, Trophy, Calendar, ChevronRight, Plus } from "lucide-react";

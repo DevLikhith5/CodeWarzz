@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
 import { Link, useParams, useNavigate } from "react-router-dom";
-import { AppNavbar } from "@/components/";
+import { AppNavbar } from "@/components/layout/AppNavbar";
 import { Button } from "@/components/ui/button";
 import { ChevronRight, ChevronLeft, Clock, Play, CheckCircle } from "lucide-react";
-import CodeEditor from "@/components/CodeEditor";
+import CodeEditor from "@/features/problems/components/CodeEditor";
 import { useTheme } from "@/contexts/ThemeContext";
 import api from "@/lib/api";
 import {
@@ -18,7 +18,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { useCodeEditorStore } from "@/stores/codeEditorStore";
+import { useCodeEditorStore } from "@/features/problems/stores/codeEditorStore";
 import { Skeleton } from "@/components/ui/skeleton";
 
 const defaultCode = ``;

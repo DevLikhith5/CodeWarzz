@@ -44,7 +44,7 @@ graph TD
     AG -- Route: /leaderboard --> LS
     AG -- Auth & Common Logic --> SS
 
-    %% Shared Library Usage
+    %% CORE Library Usage
     ES -. Uses .-> SS
     LS -. Uses .-> SS
     AG -. Uses .-> SS

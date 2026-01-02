@@ -6,7 +6,7 @@ import { updateLeaderboard } from "../../services/leaderboard.service";
 import logger from "../../config/logger.config";
 
 
-import { metricsService } from "../../../../Shared/src/service/metrics.service";
+import { metricsService } from "../../../../core/src/service/metrics.service";
 
 export const startVerdictConsumer = () => {
     const worker = new Worker("leaderboard-queue", async (job) => {

@@ -1,0 +1,188 @@
+version: '3.9'
+
+services:
+  # --- Databases ---
+  postgres:
+    image: postgres:16-alpine
+    container_name: codewarz-postgres
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-codewarz}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - codewarz-network
+
+  redis:
+    image: redis:alpine
+    container_name: codewarz-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    networks:
+      - codewarz-network
+
+  # --- Microservices ---
+  core:
+    build: 
+      context: .
+      dockerfile: core/Dockerfile
+    container_name: codewarz-core
+    env_file:
+      - ./core/.env
+    environment:
+      - NODE_ENV=development
+      - PORT=3001
+      - REDIS_URL=redis://redis:6379
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USER=${POSTGRES_USER:-postgres}
+      - DB_PASSWORD=${POSTGRES_PASSWORD:-postgres}
+      - DB_NAME=${POSTGRES_DB:-codewarz}
+      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/codewarz
+      - LOKI_URL=http://codewarz-loki:3100
+      - GOOGLE_REDIRECT_URI=http://localhost:3000/api/v1/auth/google/callback
+      - FRONTEND_URL=http://localhost:8080
+    depends_on:
+      - redis
+      - postgres
+    networks:
+      - codewarz-network
+
+  evaluation-service:
+    build:
+      context: .
+      dockerfile: evaluation-service/Dockerfile
+    deploy:
+      mode: replicated
+      replicas: 2
+    env_file:
+      - ./evaluation-service/.env
+    environment:
+      - NODE_ENV=development
+      - PORT=3003
+      - REDIS_URL=redis://redis:6379
+      - CORE_SERVICE_URL=http://core:3001
+      - LOKI_URL=http://codewarz-loki:3100
+      - HOST_WORKSPACES_ROOT=/Users/cvlikhith/CodeWarz/temp_workspaces
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./temp_workspaces:/app/evaluation-service/temp_workspaces
+    depends_on:
+      - redis
+      - core
+    networks:
+      - codewarz-network
+
+  leaderboard-service:
+    build:
+      context: .
+      dockerfile: leaderboard-service/Dockerfile
+    container_name: codewarz-leaderboard
+    env_file:
+      - ./leaderboard-service/.env
+    environment:
+      - NODE_ENV=development
+      - PORT=3002
+      - REDIS_URL=redis://redis:6379
+      - LOKI_URL=http://codewarz-loki:3100
+    depends_on:
+      - redis
+      - core
+    networks:
+      - codewarz-network
+      
+  api-gateway:
+    build:
+      context: .
+      dockerfile: api-gateway/Dockerfile
+    container_name: codewarz-gateway
+    env_file:
+      - ./api-gateway/.env
+    ports:
+      - "3000:3000"
+    environment:
+      - PORT=3000
+      - REDIS_URL=redis://redis:6379
+      - FRONTEND_URL=http://localhost:8080
+      - CORE_SERVICE_URL=http://core:3001
+      - EVALUATION_SERVICE_URL=http://evaluation-service:3003
+      - LEADERBOARD_SERVICE_URL=http://leaderboard-service:3002
+      - LOKI_URL=http://codewarz-loki:3100
+    depends_on:
+      - core
+      - evaluation-service
+      - leaderboard-service
+    networks:
+      - codewarz-network
+
+  # --- Frontend ---
+  web:
+    build: 
+      context: ./web
+      dockerfile: Dockerfile
+    container_name: codewarz-web
+    ports:
+      - "8080:8080" 
+    environment:
+      - VITE_API_URL=http://localhost:3000/api/v1
+    depends_on:
+      - api-gateway
+    networks:
+      - codewarz-network
+
+  # --- Monitoring ---
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: codewarz-prometheus
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--web.enable-lifecycle'
+    ports:
+      - "9090:9090"
+    restart: unless-stopped
+    networks:
+      - codewarz-network
+
+  loki:
+    image: grafana/loki:2.9.2
+    container_name: codewarz-loki
+    ports:
+      - "3100:3100"
+    command: -config.file=/etc/loki/local-config.yaml
+    networks:
+      - codewarz-network
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: codewarz-grafana
+    ports:
+      - "3004:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning
+    restart: unless-stopped
+    networks:
+      - codewarz-network
+
+volumes:
+  redis-data:
+  postgres-data:
+  prometheus_data:
+  grafana_data:
+
+networks:
+  codewarz-network:
+    driver: bridge

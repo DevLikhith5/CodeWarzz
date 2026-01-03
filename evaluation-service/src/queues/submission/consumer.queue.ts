@@ -1,5 +1,5 @@
 import { Worker } from "bullmq";
-import { getRedisConnObject } from "../../config/redis.config";
+import { getRedisConnObject, createWorkerConnection } from "../../config/redis.config";
 import { runSandbox } from "../../sandbox/runSandbox";
 import { pushToLeaderboardQueue } from "../verdict/leaderboard.producer";
 import logger from "../../config/logger.config";
@@ -270,8 +270,11 @@ export const startSubmissionConsumer = () => {
       }
     },
     {
-      connection: getRedisConnObject(),
+      connection: createWorkerConnection(),
       concurrency: 5,
+      lockDuration: 60000,      // 60 seconds - enough time for sandbox execution
+      lockRenewTime: 15000,     // Renew lock every 15 seconds
+      stalledInterval: 30000,   // Check for stalled jobs every 30 seconds
     }
   );
   logger.info("Submission consumer started successfully.");

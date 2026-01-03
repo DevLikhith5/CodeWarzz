@@ -47,7 +47,7 @@ export const useAuthStore = create<AuthState>((set) => ({
 
     googleLogin: () => {
 
-        window.location.href = `${import.meta.env.VITE_API_URL || 'http://localhost:3000/api/v1'}/auth/google/signin`;
+        window.location.href = `${import.meta.env.VITE_API_URL || '/api/v1'}/auth/google/signin`;
     },
 
     logout: async () => {

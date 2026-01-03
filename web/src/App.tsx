@@ -6,6 +6,7 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 
 import { ThemeProvider } from "@/contexts/ThemeContext";
 import AuthGuard from "@/features/auth/components/AuthGuard";
+import AuthInitializer from "@/components/AuthInitializer";
 import Landing from "@/features/landing/routes/Landing";
 import Auth from "@/features/auth/routes/Auth";
 import AuthCallback from "@/features/auth/routes/AuthCallback";
@@ -21,9 +22,19 @@ import ContestDetail from "@/features/contests/routes/ContestDetail";
 import ContestProblem from "@/features/contests/routes/ContestProblem";
 import ContestLeaderboard from "@/features/contests/components/ContestLeaderboard";
 import ContestResults from "@/features/contests/routes/ContestResults";
+import UnderConstruction from "@/pages/UnderConstruction";
 import NotFound from "@/pages/NotFound";
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 0,
+      refetchOnMount: 'always',
+      refetchOnWindowFocus: true,
+      retry: 1,
+    },
+  },
+});
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
@@ -32,6 +43,7 @@ const App = () => (
         <Toaster />
         <Sonner />
         <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+          <AuthInitializer />
           <Routes>
             <Route path="/" element={<Landing />} />
             <Route path="/auth" element={<Auth />} />
@@ -50,6 +62,7 @@ const App = () => (
             <Route path="/contest/:id/leaderboard" element={<AuthGuard><ContestLeaderboard /></AuthGuard>} />
             <Route path="/contest/:id/results" element={<AuthGuard><ContestResults /></AuthGuard>} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+            <Route path="/under-construction" element={<UnderConstruction />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </BrowserRouter>

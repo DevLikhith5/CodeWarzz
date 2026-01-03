@@ -16,8 +16,9 @@ export const setupSnapshotCron = async () => {
     const worker = new Worker("scheduler-queue", async (job) => {
         if (job.name === 'leaderboard-snapshot') {
             console.log("Triggering Leaderboard Snapshot via API...");
+            const coreUrl = process.env.CORE_SERVICE_URL || 'http://localhost:3001';
             try {
-                const response = await fetch('http://localhost:3001/api/v1/leaderboard/snapshot', {
+                const response = await fetch(`${coreUrl}/api/v1/leaderboard/snapshot`, {
                     method: 'POST',
                 });
 

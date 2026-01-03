@@ -7,6 +7,7 @@ import { appErrorHandler, genericErrorHandler } from './middlewares/error.middle
 import morgan from 'morgan';
 import logger from './config/logger.config';
 import { metricsMiddleware } from '../../core/src/middlewares/metrics.middleware';
+
 import { correlationIdMiddleware } from '../../core/src/middlewares/correlation.middleware';
 import { startVerdictConsumer } from './queues/verdict/consumer.queue';
 
@@ -39,6 +40,7 @@ import { getRedisConnObject } from './config/redis.config';
 queueMonitorService.monitorQueue("leaderboard-queue", getRedisConnObject());
 
 startVerdictConsumer();
+
 
 
 import { metricsService } from '../../core/src/service/metrics.service';

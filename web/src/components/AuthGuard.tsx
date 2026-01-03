@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '@/features/auth/stores/useAuthStore';
 import { Skeleton } from "@/components/ui/skeleton";
@@ -8,33 +8,16 @@ interface AuthGuardProps {
 }
 
 const AuthGuard = ({ children }: AuthGuardProps) => {
-    const { isAuthenticated, checkAuth } = useAuthStore();
+    const { isAuthenticated, isInitialized } = useAuthStore();
     const navigate = useNavigate();
-    const [isChecking, setIsChecking] = useState(true);
 
     useEffect(() => {
-        const authenticate = async () => {
-            if (isAuthenticated) {
-                setIsChecking(false);
-                return;
-            }
-
-            try {
-                await checkAuth();
-            } finally {
-                setIsChecking(false);
-            }
-        };
-        authenticate();
-    }, [checkAuth, isAuthenticated]);
-
-    useEffect(() => {
-        if (!isChecking && !isAuthenticated) {
+        if (isInitialized && !isAuthenticated) {
             navigate('/auth');
         }
-    }, [isChecking, isAuthenticated, navigate]);
+    }, [isInitialized, isAuthenticated, navigate]);
 
-    if (isChecking) {
+    if (!isInitialized) {
         return (
             <div className="min-h-screen bg-background">
                 {/* Navbar Skeleton */}

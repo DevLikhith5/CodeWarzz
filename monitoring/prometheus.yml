@@ -1,6 +1,6 @@
 global:
   scrape_interval: 5s
-
+# host.docker.internal will fail on linux so use the serivce-names => api-gateway:3000
 scrape_configs:
   - job_name: 'api-gateway'
     metrics_path: '/metrics'

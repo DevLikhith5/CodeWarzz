@@ -41,6 +41,9 @@ queueMonitorService.monitorQueue("submission-queue", getRedisConnObject());
 import { startSubmissionConsumer } from './queues/submission/consumer.queue';
 startSubmissionConsumer();
 
+import { setupSnapshotCron } from './cron/leaderboardSnapshot.cron';
+setupSnapshotCron();
+
 app.get("/metrics", async (req, res) => {
     res.set('Content-Type', metricsService.getRegistry().contentType);
     res.end(await metricsService.getRegistry().metrics());

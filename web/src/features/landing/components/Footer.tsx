@@ -3,30 +3,30 @@ import { Button } from "@/components/ui/button";
 
 const footerLinks = {
   product: [
-    { name: "Problems", href: "#" },
-    { name: "Contests", href: "#" },
-    { name: "Discuss", href: "#" },
-    { name: "Interview Prep", href: "#" },
-    { name: "Study Plans", href: "#" },
+    { name: "Problems", href: "/problems" },
+    { name: "Contests", href: "/contests" },
+    { name: "Discuss", href: "/under-construction" },
+    { name: "Interview Prep", href: "/under-construction" },
+    { name: "Study Plans", href: "/under-construction" },
   ],
   company: [
-    { name: "About Us", href: "#" },
-    { name: "Careers", href: "#" },
-    { name: "Press", href: "#" },
-    { name: "Blog", href: "#" },
-    { name: "Contact", href: "#" },
+    { name: "About Us", href: "/under-construction" },
+    { name: "Careers", href: "/under-construction" },
+    { name: "Press", href: "/under-construction" },
+    { name: "Blog", href: "/under-construction" },
+    { name: "Contact", href: "/under-construction" },
   ],
   resources: [
-    { name: "Documentation", href: "#" },
-    { name: "API", href: "#" },
-    { name: "Community", href: "#" },
-    { name: "Support", href: "#" },
-    { name: "Status", href: "#" },
+    { name: "Documentation", href: "/under-construction" },
+    { name: "API", href: "/under-construction" },
+    { name: "Community", href: "/under-construction" },
+    { name: "Support", href: "/under-construction" },
+    { name: "Status", href: "/under-construction" },
   ],
   legal: [
-    { name: "Privacy Policy", href: "#" },
-    { name: "Terms of Service", href: "#" },
-    { name: "Cookie Policy", href: "#" },
+    { name: "Privacy Policy", href: "/under-construction" },
+    { name: "Terms of Service", href: "/under-construction" },
+    { name: "Cookie Policy", href: "/under-construction" },
   ],
 };
 

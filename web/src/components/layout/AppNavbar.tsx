@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Moon, Sun, User, LogOut, Menu, X } from "lucide-react";
 import { useTheme } from "@/contexts/ThemeContext";
@@ -23,7 +23,13 @@ export const AppNavbar = () => {
   const location = useLocation();
   const { theme, toggleTheme } = useTheme();
   const { logout } = useAuthStore();
+  const navigate = useNavigate();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  const handleLogout = () => {
+    navigate('/');
+    logout();
+  };
 
   return (
     <nav className="fixed top-0 left-0 right-0 z-50 border-b border-border bg-background/80 backdrop-blur-xl">
@@ -95,7 +101,7 @@ export const AppNavbar = () => {
                   </Link>
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={logout} className="cursor-pointer">
+                <DropdownMenuItem onClick={handleLogout} className="cursor-pointer">
                   <div className="flex items-center gap-2 text-destructive">
                     <LogOut className="h-4 w-4" />
                     Logout

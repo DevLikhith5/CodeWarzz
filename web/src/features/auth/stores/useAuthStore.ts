@@ -6,6 +6,7 @@ interface AuthState {
     user: User | null;
     isAuthenticated: boolean;
     isLoading: boolean;
+    isInitialized: boolean;
     error: string | null;
 
     login: (data: any) => Promise<void>;
@@ -19,6 +20,7 @@ export const useAuthStore = create<AuthState>((set) => ({
     user: null,
     isAuthenticated: false,
     isLoading: false,
+    isInitialized: false,
     error: null,
 
     login: async (data) => {
@@ -68,12 +70,12 @@ export const useAuthStore = create<AuthState>((set) => ({
             const user = (response as any).user || (response as any).data?.user;
 
             if (user) {
-                set({ user, isAuthenticated: true, isLoading: false });
+                set({ user, isAuthenticated: true, isLoading: false, isInitialized: true });
             } else {
-                set({ user: null, isAuthenticated: false, isLoading: false });
+                set({ user: null, isAuthenticated: false, isLoading: false, isInitialized: true });
             }
         } catch (error) {
-            set({ user: null, isAuthenticated: false, isLoading: false });
+            set({ user: null, isAuthenticated: false, isLoading: false, isInitialized: true });
         }
     }
 }));

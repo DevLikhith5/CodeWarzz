@@ -1,5 +1,9 @@
 # CodeWarz
 
+<img width="1920" height="1080" alt="image" src="https://github.com/user-attachments/assets/c7f667df-e591-4b3b-bd83-b546e90b84ba" />
+
+
+
 ![TypeScript](https://img.shields.io/badge/typescript-%23007ACC.svg?style=for-the-badge&logo=typescript&logoColor=white)
 ![Docker](https://img.shields.io/badge/docker-%230db7ed.svg?style=for-the-badge&logo=docker&logoColor=white)
 ![Redis](https://img.shields.io/badge/redis-%23DD0031.svg?style=for-the-badge&logo=redis&logoColor=white)
@@ -107,6 +111,8 @@ We chose a DinD architecture to allow the `Evaluation Service` to programmatical
 
 ### Why Microservices?
 Separating the **Core API** (CRUD, Auth) from the **Evaluation Engine** (CPU-intensive) ensures that browsing problems or checking the leaderboard remains snappy even when the judge is under heavy load.
+
+---
 
 ---
 

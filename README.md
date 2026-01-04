@@ -1,9 +1,13 @@
 # CodeWarz
 
-![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?style=flat-square&logo=typescript&logoColor=white)
-![Docker](https://img.shields.io/badge/Docker-2496ED?style=flat-square&logo=docker&logoColor=white)
-![Redis](https://img.shields.io/badge/Redis-DC382D?style=flat-square&logo=redis&logoColor=white)
-![PostgreSQL](https://img.shields.io/badge/PostgreSQL-316192?style=flat-square&logo=postgresql&logoColor=white)
+<img width="1920" height="1080" alt="image" src="https://github.com/user-attachments/assets/c7f667df-e591-4b3b-bd83-b546e90b84ba" />
+
+
+
+![TypeScript](https://img.shields.io/badge/typescript-%23007ACC.svg?style=for-the-badge&logo=typescript&logoColor=white)
+![Docker](https://img.shields.io/badge/docker-%230db7ed.svg?style=for-the-badge&logo=docker&logoColor=white)
+![Redis](https://img.shields.io/badge/redis-%23DD0031.svg?style=for-the-badge&logo=redis&logoColor=white)
+![Postgres](https://img.shields.io/badge/postgres-%23316192.svg?style=for-the-badge&logo=postgresql&logoColor=white)
 
 CodeWarz is a distributed, high-performance competitive programming platform designed for scale and security. It leverages a microservices architecture to isolate execution environments, ensure fault tolerance, and provide real-time leaderboard updates with sub-millisecond latency.
 
@@ -120,6 +124,8 @@ The entire infrastructure is defined in `docker-compose.yml` for rapid deploymen
 ### Development Notes
 -   **Workspaces**: The `temp_workspaces` directory is mounted to the evaluation service to share source code with sandbox containers.
 -   **Logs**: All services stream logs to Loki, viewable in Grafana.
+
+---
 
 ## License
 

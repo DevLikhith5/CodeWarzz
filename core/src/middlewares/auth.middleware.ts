@@ -41,7 +41,7 @@ export const verifyToken = async (req: Request, res: Response, next: NextFunctio
 
 export const verifyInternalOrUser = async (req: Request, res: Response, next: NextFunction) => {
     const apiKey = req.headers['x-internal-api-key'];
-    console.log('API KEY: ',apiKey)
+    console.log('API KEY: ', apiKey)
     if (apiKey && apiKey === INTERNAL_API_KEY) {
         return next();
     }
@@ -71,8 +71,9 @@ export const extractUser = async (req: Request, res: Response, next: NextFunctio
     try {
         const decoded = jwt.verify(token, JWT_SECRET) as { id: string; role: string };
         req.user = decoded;
+        next();
     } catch (error) {
-        // Ignore invalid token, treated as guest
+        // If token is present but invalid (expired/malformed), return 401 to trigger refresh
+        return next(new UnauthorizedError('Invalid token'));
     }
-    next();
 };

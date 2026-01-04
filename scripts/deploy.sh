@@ -27,5 +27,13 @@ echo "=== Step 2: Starting Services ==="
 docker compose up -d --build
 
 echo ""
+echo "=== Step 3: Running Database Migrations ==="
+echo "Waiting for key services to stabilize..."
+sleep 5
+echo "Running migrations..."
+docker compose exec core npx drizzle-kit push
+echo "Migrations applied."
+
+echo ""
 echo "=== Deployment Complete! ==="
 echo "Logs: docker compose logs -f"

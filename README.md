@@ -11,7 +11,7 @@
 
 CodeWarz is a distributed, high-performance competitive programming platform built with enterprise-grade system design patterns. It handles untrusted code execution, real-time leaderboard ranking, and complex anti-cheat mechanisms across a polyglot microservice architecture.
 
-## 🚀 Advanced Architectural Patterns
+## Advanced Architectural Patterns
 
 This platform was built to demonstrate proficiency in handling highly concurrent distributed systems:
 
@@ -22,7 +22,7 @@ This platform was built to demonstrate proficiency in handling highly concurrent
 - **AST Plagiarism Detection:** Deterministic tokenization and fingerprinting of Abstract Syntax Trees (similar to Stanford's MOSS) to catch structurally similar code regardless of variable renaming.
 - **Chaos Engineering:** A custom Python runner that injects faults (network latency, container death) to validate the system's resilience and circuit breakers.
 
-## 🏗️ System Architecture
+## System Architecture
 
 ```mermaid
 graph TD
@@ -52,7 +52,7 @@ graph TD
     end
 ```
 
-## 🛠️ System Components
+## System Components
 
 ### 1. Core Service (TypeScript / Node.js)
 The single source of truth for problem statements, user data, and submission tracking. It handles the Outbox pattern to safely stream events to RabbitMQ and manages the AST-based Plagiarism Detection module.
@@ -69,7 +69,7 @@ The entry point. Handles rate limiting, cache stampede prevention (via distribut
 ### 5. Chaos Engineering (Python)
 A suite that tests the system by randomly killing RabbitMQ nodes, Redis caches, or Go workers to ensure no submissions are dropped.
 
-## 🚀 Getting Started
+## Getting Started
 
 The entire infrastructure (Services, Postgres, Redis, RabbitMQ, Jaeger, Prometheus, Grafana, Loki) is orchestrated via Docker Compose.
 

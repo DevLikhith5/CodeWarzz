@@ -150,8 +150,12 @@ import { appErrorHandler, genericErrorHandler } from "../../core/src/middlewares
 app.use(appErrorHandler);
 app.use(genericErrorHandler);
 
-app.listen(PORT, () => {
-    logger.info(`API Gateway is running on http://localhost:${PORT}`);
-    logger.info(`Proxying /api/v1/leaderboard -> ${LEADERBOARD_SERVICE_URL}`);
-    logger.info(`Proxying /api/v1 (everything else) -> ${CORE_SERVICE_URL}`);
-});
+if (require.main === module) {
+    app.listen(PORT, () => {
+        logger.info(`API Gateway is running on http://localhost:${PORT}`);
+        logger.info(`Proxying /api/v1/leaderboard -> ${LEADERBOARD_SERVICE_URL}`);
+        logger.info(`Proxying /api/v1 (everything else) -> ${CORE_SERVICE_URL}`);
+    });
+}
+
+export default app;

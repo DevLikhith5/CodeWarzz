@@ -13,6 +13,7 @@ class RedisClient {
 
             RedisClient.instance = new IoRedis(serverConfig.REDIS_URL, {
                 maxRetriesPerRequest: null,
+                retryStrategy: process.env.NODE_ENV === 'test' ? () => null : undefined,
             });
 
             RedisClient.instance.on("connect", () =>

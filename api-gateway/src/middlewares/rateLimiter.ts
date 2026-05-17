@@ -55,6 +55,9 @@ export const rateLimiter = (config: RateLimitConfig = DEFAULT_CONFIG) => {
             const now = Math.floor(Date.now() / 1000);
 
 
+            // Skip rate limiting in test environment
+            if (process.env.NODE_ENV === 'test') return next();
+
             const result = await redis.eval(RATE_LIMIT_SCRIPT, 1, key, config.maxTokens, config.refillRate, now);
 
             if ((result as number) >= 0) {

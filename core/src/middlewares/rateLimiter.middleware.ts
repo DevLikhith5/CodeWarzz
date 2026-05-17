@@ -105,7 +105,7 @@ function findRule(method: string, path: string): RateLimitRule | undefined {
 
 export function distributedRateLimiter() {
     return async (req: Request, res: Response, next: NextFunction) => {
-        const identifier = req.user?.id || req.ip || 'anonymous';
+        const identifier = (req as any).user?.id || req.ip || 'anonymous';
         const rule = findRule(req.method, req.path);
 
         if (!rule) {

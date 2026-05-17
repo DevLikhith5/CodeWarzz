@@ -48,6 +48,9 @@ export const bloomFilterMiddleware = async (req: Request, res: Response, next: N
             idToCheck = problemMatch[1];
         }
 
+        // Skip bloom filter entirely in test environments (Redis not available)
+        if (process.env.NODE_ENV === 'test') return next();
+
         // If it's not a known entity route, pass through
         if (!filterKey || !idToCheck || idToCheck === "live" || idToCheck === "stream" || idToCheck === "archive") {
             return next();

@@ -71,12 +71,15 @@ services:
       - GOOGLE_REDIRECT_URI=https://codewarz.contactlikhith.me/api/v1/auth/google/callback
       - FRONTEND_URL=https://codewarz.contactlikhith.me
       - PLAGIARISM_THRESHOLD=0.80
+      # gRPC server (ProblemService + SubmissionService)
+      - CORE_GRPC_PORT=50051
     depends_on:
       - redis
       - postgres
       - rabbitmq
     ports:
       - "4983:4983"
+      - "50051:50051"  # gRPC — internal only
     networks:
       - codewarz-network
 
@@ -91,7 +94,11 @@ services:
       - SERVICE_NAME=evaluation-service-go
       - PORT=3004
       - RABBITMQ_URL=amqp://codewarz:codewarz@rabbitmq:5672
+      # Legacy HTTP kept for health checks only
       - CORE_SERVICE_URL=http://core:3001
+      # gRPC addresses — replaces REST inter-service calls
+      - CORE_GRPC_ADDR=core:50051
+      - LEADERBOARD_GRPC_ADDR=leaderboard-service:50052
       - INTERNAL_API_KEY=${INTERNAL_API_KEY:-INTERNAL_KEY}
       - HOST_WORKSPACES_ROOT=/Users/cvlikhith/CodeWarz/temp_workspaces
     volumes:
@@ -101,6 +108,7 @@ services:
       - redis
       - rabbitmq
       - core
+      - leaderboard-service
     networks:
       - codewarz-network
 
@@ -148,12 +156,37 @@ services:
       - RABBITMQ_URL=amqp://codewarz:codewarz@rabbitmq:5672
       - LOKI_URL=http://codewarz-loki:3100
       - JAEGER_URL=http://codewarz-jaeger:14268
+      # gRPC server (LeaderboardService — CQRS write + read)
+      - LEADERBOARD_GRPC_PORT=50052
     depends_on:
       - redis
       - rabbitmq
       - core
+    ports:
+      - "50052:50052"  # gRPC — internal only
     networks:
       - codewarz-network
+
+
+  # --- Chaos Engineering --- (run manually, not part of regular stack)
+  chaos-engineering:
+    image: python:3.12-slim
+    container_name: codewarz-chaos
+    profiles:
+      - chaos
+    volumes:
+      - ./chaos-engineering:/chaos
+      - /var/run/docker.sock:/var/run/docker.sock
+    working_dir: /chaos
+    entrypoint:
+      - bash
+      - -c
+      - |
+        pip install docker requests pyyaml rich --quiet &&
+        python3 chaos_runner.py --config chaos.config.yml
+    environment:
+      - PYTHONUNBUFFERED=1
+    network_mode: host
       
   api-gateway:
     build:

@@ -54,6 +54,12 @@ async function startServer() {
 
     startVerdictConsumer();
 
+    // ── gRPC server — leaderboard service (CQRS write + read endpoints) ──
+    const { startLeaderboardGRPCServer } = await import('./grpc/grpc.server');
+    const GRPC_PORT = process.env.LEADERBOARD_GRPC_PORT || 50052;
+    startLeaderboardGRPCServer(GRPC_PORT);
+    logger.info(`Leaderboard gRPC server started on port ${GRPC_PORT}`);
+
     app.listen(serverConfig.PORT, () => {
         logger.info(`Server is running on http://localhost:${serverConfig.PORT}`);
         logger.info(`Press Ctrl+C to stop the server.`);

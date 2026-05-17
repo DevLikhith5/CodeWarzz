@@ -17,13 +17,15 @@ func main() {
 
 	logger.Info("Starting Go Evaluation Service Worker",
 		"rabbitmq", cfg.RabbitMQURL,
-		"core_service", cfg.CoreServiceURL,
+		"core_grpc", cfg.CoreGRPCAddr,
+		"leaderboard_grpc", cfg.LeaderboardGRPCAddr,
 	)
 
+	// NewConsumer now dials gRPC to core + leaderboard instead of REST.
 	consumer, err := queue.NewConsumer(
 		cfg.RabbitMQURL,
-		cfg.CoreServiceURL,
-		cfg.InternalAPIKey,
+		cfg.CoreGRPCAddr,
+		cfg.LeaderboardGRPCAddr,
 		cfg.HostWorkspacesRoot,
 	)
 	if err != nil {
@@ -35,7 +37,7 @@ func main() {
 		log.Fatalf("Failed to start consumer: %v", err)
 	}
 
-	logger.Info("Go Evaluation Service Worker is running")
+	logger.Info("Go Evaluation Service Worker is running (gRPC mode)")
 
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)

@@ -1,0 +1,38 @@
+# CodeWarz Chaos Engineering Configuration
+# Override any default setting here.
+
+# ── Target System ──────────────────────────────────────────────────────────
+gateway_url: "http://localhost:3000"
+health_endpoint: "/health"
+
+# ── Timing ────────────────────────────────────────────────────────────────
+probe_interval_s: 2          # How often to poll the health endpoint
+chaos_interval_s: 15         # How often to inject a fault
+experiment_duration_s: 120   # Total experiment window
+
+# ── Fault Parameters ──────────────────────────────────────────────────────
+network_fault_duration_s: 10 # How long each tc loss rule stays active
+restart_delay_s: 5           # Grace period before killing next container
+
+# ── Container Targets (weighted selection) ────────────────────────────────
+# Higher weight = more likely to be chosen as kill target
+targets:
+  - name: "codewarz-core"
+    weight: 3
+  - name: "codewarz-leaderboard"
+    weight: 2
+  - name: "codewarz-gateway"
+    weight: 1
+  - name: "codewarz-evaluation-service-go"
+    weight: 2
+
+# ── Infrastructure (never kill these) ─────────────────────────────────────
+exclude_containers:
+  - "codewarz-postgres"
+  - "codewarz-redis"
+  - "codewarz-rabbitmq"
+  - "codewarz-prometheus"
+  - "codewarz-grafana"
+
+# ── Output ────────────────────────────────────────────────────────────────
+report_path: "chaos_report.json"

@@ -88,6 +88,12 @@ async function startServer() {
 
     startPlagiarismConsumer();
 
+    // ── gRPC server (replaces REST for internal evaluation-service-go calls) ─
+    const { startGRPCServer } = await import('./grpc/grpc.server');
+    const GRPC_PORT = process.env.CORE_GRPC_PORT || 50051;
+    startGRPCServer(GRPC_PORT);
+    logger.info(`Core gRPC server started on port ${GRPC_PORT}`);
+
     setInterval(async () => {
         const processed = await processOutboxBatch(20);
         if (processed > 0) {

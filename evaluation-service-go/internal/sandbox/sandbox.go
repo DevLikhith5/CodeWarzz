@@ -73,7 +73,7 @@ func Run(sandboxInput SandboxInput, hostWorkspacesRoot string) SandboxResult {
 	passed := 0
 	testcaseResults := make([]TestcaseResult, 0, len(sandboxInput.Testcases))
 
-	for i, tc := range sandboxInput.Testcases {
+	for _, tc := range sandboxInput.Testcases {
 		inputFile := filepath.Join(ws.Dir, "input.txt")
 		if err := os.WriteFile(inputFile, []byte(tc.Input), 0644); err != nil {
 			testcaseResults = append(testcaseResults, TestcaseResult{Verdict: "RE", Error: err.Error()})

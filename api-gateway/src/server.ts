@@ -69,8 +69,9 @@ app.get("/health", (req: Request, res: Response): void => {
 });
 
 
+import { cacheMiddleware } from "./middlewares/cache";
 
-app.use("/api/v1/leaderboard/live", proxy(LEADERBOARD_SERVICE_URL, {
+app.use("/api/v1/leaderboard/live", cacheMiddleware(3), proxy(LEADERBOARD_SERVICE_URL, {
     proxyReqOptDecorator: (proxyReqOpts, srcReq) => {
         proxyReqOpts.headers = {
             ...proxyReqOpts.headers,

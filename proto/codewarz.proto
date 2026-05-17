@@ -1,0 +1,112 @@
+syntax = "proto3";
+
+package codewarz;
+
+option go_package = "evaluation-service-go/internal/grpc/pb";
+
+// ─────────────────────────────────────────────────────────────────
+//  Problem Service — called by evaluation-service-go → core
+// ─────────────────────────────────────────────────────────────────
+service ProblemService {
+  rpc GetProblem(GetProblemRequest) returns (GetProblemResponse);
+}
+
+message GetProblemRequest {
+  string problem_id = 1;
+}
+
+message GetProblemResponse {
+  string problem_id       = 1;
+  int32  time_limit_ms    = 2;
+  int32  memory_limit_mb  = 3;
+  double cpu_limit        = 4;
+  int32  max_score        = 5;
+  repeated Testcase testcases = 6;
+}
+
+message Testcase {
+  string input          = 1;
+  string expected_output = 2;
+  bool   is_sample      = 3;
+}
+
+// ─────────────────────────────────────────────────────────────────
+//  Submission Service — called by evaluation-service-go → core
+// ─────────────────────────────────────────────────────────────────
+service SubmissionService {
+  rpc PersistVerdict(PersistVerdictRequest) returns (PersistVerdictResponse);
+}
+
+message PersistVerdictRequest {
+  string submission_id      = 1;
+  string verdict            = 2;
+  int32  score              = 3;
+  int64  time_taken_ms      = 4;
+  int32  passed_testcases   = 5;
+  int32  total_testcases    = 6;
+  string failed_input       = 7;
+  string failed_expected    = 8;
+  string failed_output      = 9;
+  string error_message      = 10;
+}
+
+message PersistVerdictResponse {
+  bool   success = 1;
+  string message = 2;
+}
+
+// ─────────────────────────────────────────────────────────────────
+//  Leaderboard Service — called by evaluation-service-go → leaderboard
+// ─────────────────────────────────────────────────────────────────
+service LeaderboardService {
+  rpc UpdateLeaderboard(UpdateLeaderboardRequest) returns (UpdateLeaderboardResponse);
+  rpc GetTopLeaderboard(GetTopLeaderboardRequest) returns (GetTopLeaderboardResponse);
+  rpc GetUserRank(GetUserRankRequest) returns (GetUserRankResponse);
+}
+
+message UpdateLeaderboardRequest {
+  string  contest_id       = 1;
+  string  user_id          = 2;
+  double  score            = 3;
+  int64   time_taken_ms    = 4;
+  string  contest_end_time = 5;  // ISO 8601, optional
+  string  submission_id    = 6;
+}
+
+message UpdateLeaderboardResponse {
+  bool   success    = 1;
+  string contest_id = 2;
+  string user_id    = 3;
+  double score      = 4;
+}
+
+message GetTopLeaderboardRequest {
+  string contest_id = 1;
+  int32  limit      = 2;
+}
+
+message LeaderboardEntry {
+  string user_id         = 1;
+  double raw_score       = 2;
+  int32  score           = 3;
+  int32  penalty_minutes = 4;
+  int32  rank            = 5;
+}
+
+message GetTopLeaderboardResponse {
+  string contest_id                  = 1;
+  repeated LeaderboardEntry entries  = 2;
+}
+
+message GetUserRankRequest {
+  string contest_id = 1;
+  string user_id    = 2;
+}
+
+message GetUserRankResponse {
+  bool   found           = 1;
+  string user_id         = 2;
+  int32  rank            = 3;
+  int32  score           = 4;
+  int32  penalty_minutes = 5;
+}

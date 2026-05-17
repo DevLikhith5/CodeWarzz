@@ -59,6 +59,7 @@ app.get("/metrics", async (req, res) => {
 
 import { queueMonitorService } from './service/queueMonitor.service';
 import { setupRabbitMQTopology } from './queues/rabbitmq';
+import { startPlagiarismConsumer } from './queues/plagiarism/consumer.queue';
 
 async function startServer() {
     try {
@@ -68,6 +69,8 @@ async function startServer() {
         logger.error('Failed to initialize RabbitMQ topology', { error: err.message });
         process.exit(1);
     }
+
+    startPlagiarismConsumer();
 
     app.listen(serverConfig.PORT, () => {
         logger.info(`Server is running on http://localhost:${serverConfig.PORT}`);

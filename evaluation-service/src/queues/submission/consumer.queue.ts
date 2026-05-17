@@ -1,6 +1,6 @@
 import { consumeSubmissionQueue, MessageHandler } from '../../../../core/src/queues/rabbitmq';
 import { runSandbox } from "../../sandbox/runSandbox";
-import { publishVerdict } from '../../../../core/src/queues/rabbitmq';
+import { publishVerdict, publishPlagiarism } from '../../../../core/src/queues/rabbitmq';
 import logger from "../../config/logger.config";
 import { asyncLocalStorage } from "../../../../core/src/utils/helpers/request.helpers";
 import { metricsService } from "../../../../core/src/service/metrics.service";
@@ -250,6 +250,14 @@ export const startSubmissionConsumer = () => {
           score: finalEncodedScore,
           contestEndTime,
           verdict: sandboxResult.verdict
+        });
+
+        await publishPlagiarism({
+          submissionId,
+          problemId,
+          contestId,
+          code,
+          language,
         });
 
         if (contestId) {

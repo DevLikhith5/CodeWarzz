@@ -131,6 +131,24 @@ export class UserRepository {
         });
     }
 
+    async decrementUserActivity(userId: string) {
+        return await observeDbQuery('decrementUserActivity', 'userDailyActivity', async () => {
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+
+            await db
+                .update(userDailyActivity)
+                .set({
+                    submissions: sql`GREATEST(${userDailyActivity.submissions} - 1, 0)`,
+                    updatedAt: new Date()
+                })
+                .where(and(
+                    eq(userDailyActivity.userId, userId),
+                    eq(userDailyActivity.date, today)
+                ));
+        });
+    }
+
     async incrementSolvedCount(userId: string) {
         return await observeDbQuery('incrementSolvedCount', 'users', async () => {
             await db

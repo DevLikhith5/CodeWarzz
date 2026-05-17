@@ -1,0 +1,84 @@
+name: CodeWarz CI Pipeline
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test-go:
+    name: Test Go Evaluation Service
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.22'
+          cache: true
+
+      - name: Install dependencies
+        run: |
+          cd evaluation-service-go
+          go mod download
+
+      - name: Run Tests with Coverage
+        run: |
+          cd evaluation-service-go
+          go test -v -coverprofile=coverage.out ./...
+
+  docker-build:
+    name: Build Docker Images
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Set up Docker Buildx
+        uses: actions/setup-qemu-action@v2
+        
+      - name: Set up Docker Build
+        uses: actions/setup-buildx-action@v2
+
+      - name: Build Core Microservice
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          file: ./core/Dockerfile
+          push: false
+          tags: codewarz/core:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build Go Evaluation Service
+        uses: docker/build-push-action@v4
+        with:
+          context: ./evaluation-service-go
+          file: ./evaluation-service-go/Dockerfile
+          push: false
+          tags: codewarz/evaluation-service-go:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build Leaderboard Service
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          file: ./leaderboard-service/Dockerfile
+          push: false
+          tags: codewarz/leaderboard-service:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build API Gateway
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          file: ./api-gateway/Dockerfile
+          push: false
+          tags: codewarz/api-gateway:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

@@ -65,7 +65,7 @@ app.get("/health/circuit-breakers", (req, res) => {
 });
 
 import { getOutboxStats } from './service/outbox.service';
-import { processOutboxBatch } from './service/outbox.service';
+
 
 app.get("/health/outbox", async (req, res) => {
     const stats = await getOutboxStats();
@@ -76,6 +76,7 @@ import { queueMonitorService } from './service/queueMonitor.service';
 import { setupRabbitMQTopology } from './queues/rabbitmq';
 import { startPlagiarismConsumer } from './queues/plagiarism/consumer.queue';
 import { backpressureMonitor } from './service/backpressure.service';
+import { hydrateBloomFilters } from './service/bloom.service';
 
 async function startServer() {
     try {
@@ -88,18 +89,19 @@ async function startServer() {
 
     startPlagiarismConsumer();
 
+    // ── Hydrate Bloom Filters to protect Gateway from malicious load ──
+    await hydrateBloomFilters();
+
     // ── gRPC server (replaces REST for internal evaluation-service-go calls) ─
     const { startGRPCServer } = await import('./grpc/grpc.server');
     const GRPC_PORT = process.env.CORE_GRPC_PORT || 50051;
     startGRPCServer(GRPC_PORT);
     logger.info(`Core gRPC server started on port ${GRPC_PORT}`);
 
-    setInterval(async () => {
-        const processed = await processOutboxBatch(20);
-        if (processed > 0) {
-            logger.info(`Outbox processor: published ${processed} messages`);
-        }
-    }, 2000);
+    // ── Zero-Polling Change Data Capture (CDC) ──
+    const { initializeCDC, startCDCListener } = await import('./service/outbox.service');
+    await initializeCDC();
+    await startCDCListener();
 
     backpressureMonitor.startMonitoring(['submission-queue', 'verdict-queue', 'plagiarism-queue']);
 

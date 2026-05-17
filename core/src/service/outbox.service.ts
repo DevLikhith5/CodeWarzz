@@ -115,3 +115,49 @@ export async function getOutboxStats(): Promise<{ pending: number; failed: numbe
         published: published.length,
     };
 }
+
+import { sql } from 'drizzle-orm';
+import { Client } from 'pg';
+
+export async function initializeCDC() {
+    try {
+        await db.execute(sql`
+            CREATE OR REPLACE FUNCTION notify_outbox() RETURNS TRIGGER AS $$
+            BEGIN
+                PERFORM pg_notify('new_outbox_message', NEW.id::text);
+                RETURN NEW;
+            END;
+            $$ LANGUAGE plpgsql;
+
+            DROP TRIGGER IF EXISTS outbox_notify_trigger ON outbox_messages;
+            CREATE TRIGGER outbox_notify_trigger
+            AFTER INSERT ON outbox_messages
+            FOR EACH ROW EXECUTE FUNCTION notify_outbox();
+        `);
+        logger.info("PostgreSQL CDC trigger verified via raw SQL");
+    } catch (err: any) {
+        logger.error("Failed to initialize PostgreSQL CDC trigger", { error: err.message });
+    }
+}
+
+export async function startCDCListener() {
+    const client = new Client({ connectionString: process.env.DATABASE_URL });
+    
+    try {
+        await client.connect();
+        
+        client.on('notification', async (msg) => {
+            if (msg.channel === 'new_outbox_message') {
+                const processed = await processOutboxBatch(20);
+                if (processed > 0) {
+                    logger.info(`CDC Push triggered: Instantly relayed ${processed} messages to RabbitMQ`);
+                }
+            }
+        });
+
+        await client.query("LISTEN new_outbox_message");
+        logger.info("PostgreSQL CDC Listener connected to 'new_outbox_message' channel (Zero-Polling mode enabled)");
+    } catch (err: any) {
+        logger.error("CDC Listener failed to connect", { error: err.message });
+    }
+}

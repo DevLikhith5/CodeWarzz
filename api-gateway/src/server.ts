@@ -57,6 +57,9 @@ app.use(rateLimiter({
 
 app.use(distributedRateLimiter());
 
+import { bloomFilterMiddleware } from "./middlewares/bloomFilter";
+app.use(bloomFilterMiddleware);
+
 
 app.get("/metrics", async (req: Request, res: Response): Promise<void> => {
     res.set('Content-Type', metricsService.getRegistry().contentType);
@@ -70,6 +73,9 @@ app.get("/health", (req: Request, res: Response): void => {
 
 
 import { cacheMiddleware } from "./middlewares/cache";
+import { sseRouter } from "./routes/leaderboard.sse";
+
+app.use("/api/v1/leaderboard/stream", sseRouter);
 
 app.use("/api/v1/leaderboard/live", cacheMiddleware(3), proxy(LEADERBOARD_SERVICE_URL, {
     proxyReqOptDecorator: (proxyReqOpts, srcReq) => {

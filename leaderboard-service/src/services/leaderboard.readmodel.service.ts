@@ -101,6 +101,9 @@ export class LeaderboardReadModelService {
                 contestId,
                 entries: count,
             });
+
+            // ── Publish L1 Cache Invalidation Event ──
+            await redis.publish("leaderboard:invalidate", contestId);
         } catch (error: any) {
             logger.error('Failed to project CQRS via Lua', { error: error.message, contestId });
             throw error;

@@ -68,8 +68,25 @@ export class CircuitBreaker {
         this.failureCount++;
         this.lastFailureTime = Date.now();
 
-        if (this.failureCount >= this.options.failureThreshold) {
+        if (this.failureCount >= this.options.failureThreshold && this.state !== 'OPEN') {
             this.state = 'OPEN';
+            // Broadcast state change to the cluster
+            if (redis) {
+                redis.publish('circuit-breaker:sync', JSON.stringify({ name: this.name, state: 'OPEN' })).catch(() => {});
+            }
+        }
+    }
+
+    forceState(newState: CircuitState): void {
+        if (this.state !== newState) {
+            this.state = newState;
+            if (newState === 'OPEN') {
+                this.lastFailureTime = Date.now();
+                this.failureCount = this.options.failureThreshold;
+            } else if (newState === 'CLOSED') {
+                this.failureCount = 0;
+                this.successCount = 0;
+            }
         }
     }
 
@@ -78,6 +95,9 @@ export class CircuitBreaker {
         this.failureCount = 0;
         this.successCount = 0;
         this.lastFailureTime = null;
+        if (redis) {
+            redis.publish('circuit-breaker:sync', JSON.stringify({ name: this.name, state: 'CLOSED' })).catch(() => {});
+        }
     }
 
     getMetrics() {
@@ -92,7 +112,39 @@ export class CircuitBreaker {
 
 export const circuitBreakerRegistry = new Map<string, CircuitBreaker>();
 
+import { redis } from '../../config/redis.config';
+import logger from '../../config/logger.config';
+
+// ── Distributed State Synchronization ──
+let subscriberInitialized = false;
+
+function initDistributedSync() {
+    if (subscriberInitialized || !redis) return;
+    subscriberInitialized = true;
+    
+    const subscriber = redis.duplicate();
+    subscriber.subscribe('circuit-breaker:sync', (err) => {
+        if (err) logger.error("Failed to subscribe to distributed circuit breaker sync");
+    });
+
+    subscriber.on('message', (channel, message) => {
+        if (channel === 'circuit-breaker:sync') {
+            try {
+                const { name, state } = JSON.parse(message);
+                const breaker = circuitBreakerRegistry.get(name);
+                if (breaker && breaker.getState() !== state) {
+                    breaker.forceState(state);
+                    logger.warn(`[Distributed Circuit Breaker] Remote state sync applied`, { name, state });
+                }
+            } catch (err) {
+                logger.error("Failed to parse circuit breaker sync message");
+            }
+        }
+    });
+}
+
 export function getCircuitBreaker(name: string, options?: Partial<CircuitBreakerOptions>): CircuitBreaker {
+    initDistributedSync();
     if (!circuitBreakerRegistry.has(name)) {
         circuitBreakerRegistry.set(name, new CircuitBreaker(name, options));
     }

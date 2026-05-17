@@ -52,9 +52,30 @@ const ContestLeaderboard = () => {
 
     if (id) {
       fetchLeaderboard();
-      // Set up polling every 30 seconds for live updates
-      const interval = setInterval(fetchLeaderboard, 30000);
-      return () => clearInterval(interval);
+
+      // ── Server-Sent Events (SSE) Real-Time Push ──
+      const API_URL = import.meta.env.VITE_API_URL || '/api/v1';
+      const eventSource = new EventSource(`${API_URL}/leaderboard/stream/${id}`);
+
+      eventSource.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          // When the Redis Pub/Sub invalidates the backend cache, it pushes an UPDATE event
+          if (data.type === 'UPDATE') {
+            fetchLeaderboard();
+          }
+        } catch (err) {
+          console.error("Failed to parse SSE data", err);
+        }
+      };
+
+      eventSource.onerror = (err) => {
+        console.error("SSE connection error", err);
+      };
+
+      return () => {
+        eventSource.close();
+      };
     }
   }, [id]);
 

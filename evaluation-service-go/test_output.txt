@@ -1,0 +1,30 @@
+=== RUN   TestCircuitBreakerInterceptor_Success
+--- PASS: TestCircuitBreakerInterceptor_Success (0.00s)
+=== RUN   TestCircuitBreakerInterceptor_TripAndOpen
+--- FAIL: TestCircuitBreakerInterceptor_TripAndOpen (0.00s)
+panic: runtime error: invalid memory address or nil pointer dereference [recovered, repanicked]
+[signal SIGSEGV: segmentation violation code=0x2 addr=0x0 pc=0x100a59e54]
+
+goroutine 21 [running]:
+testing.tRunner.func1.2({0x100c03680, 0x10109cfd0})
+	/Users/cvlikhith/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.25.0.darwin-arm64/src/testing/testing.go:1872 +0x190
+testing.tRunner.func1()
+	/Users/cvlikhith/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.25.0.darwin-arm64/src/testing/testing.go:1875 +0x31c
+panic({0x100c03680?, 0x10109cfd0?})
+	/Users/cvlikhith/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.25.0.darwin-arm64/src/runtime/panic.go:783 +0x120
+go.uber.org/zap.(*SugaredLogger).log(0x0, 0x2, {0x100ac78fe, 0x30}, {0x0, 0x0, 0x0}, {0x14000110e30, 0x6, 0x6})
+	/Users/cvlikhith/go/pkg/mod/go.uber.org/zap@v1.26.0/sugar.go:310 +0x54
+go.uber.org/zap.(*SugaredLogger).Errorw(...)
+	/Users/cvlikhith/go/pkg/mod/go.uber.org/zap@v1.26.0/sugar.go:236
+evaluation-service-go/pkg/logger.Error(...)
+	/Users/cvlikhith/CodeWarz/evaluation-service-go/pkg/logger/logger.go:25
+evaluation-service-go/internal/grpc.TestCircuitBreakerInterceptor_TripAndOpen.traceAndCircuitBreakerInterceptor.func2(...)
+	/Users/cvlikhith/CodeWarz/evaluation-service-go/internal/grpc/client.go:56
+evaluation-service-go/internal/grpc.TestCircuitBreakerInterceptor_TripAndOpen(0x14000102a80)
+	/Users/cvlikhith/CodeWarz/evaluation-service-go/internal/grpc/client_test.go:51 +0x26c
+testing.tRunner(0x14000102a80, 0x100cb6e88)
+	/Users/cvlikhith/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.25.0.darwin-arm64/src/testing/testing.go:1934 +0xc8
+created by testing.(*T).Run in goroutine 1
+	/Users/cvlikhith/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.25.0.darwin-arm64/src/testing/testing.go:1997 +0x364
+FAIL	evaluation-service-go/internal/grpc	1.088s
+FAIL

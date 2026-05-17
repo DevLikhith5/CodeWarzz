@@ -13,6 +13,7 @@ import (
 	"evaluation-service-go/internal/grpc/pb"
 	"evaluation-service-go/pkg/logger"
 
+	"github.com/sony/gobreaker"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/keepalive"
@@ -25,15 +26,31 @@ const (
 	keepAliveTimeout     = 10 * time.Second
 )
 
-// traceInterceptor propagates x-correlation-id from the Go context to gRPC metadata
-func traceInterceptor() grpc.UnaryClientInterceptor {
+var cb *gobreaker.CircuitBreaker
+
+func init() {
+	cb = gobreaker.NewCircuitBreaker(gobreaker.Settings{
+		Name:        "gRPC-Client",
+		MaxRequests: 3,
+		Interval:    10 * time.Second,
+		Timeout:     30 * time.Second,
+		ReadyToTrip: func(counts gobreaker.Counts) bool {
+			return counts.ConsecutiveFailures >= 5
+		},
+	})
+}
+
+// traceAndCircuitBreakerInterceptor propagates x-correlation-id and applies the circuit breaker
+func traceAndCircuitBreakerInterceptor() grpc.UnaryClientInterceptor {
 	return func(ctx context.Context, method string, req, reply interface{}, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
 		if correlationID, ok := ctx.Value("correlation-id").(string); ok {
 			ctx = metadata.AppendToOutgoingContext(ctx, "x-correlation-id", correlationID)
 		}
 		
 		start := time.Now()
-		err := invoker(ctx, method, req, reply, cc, opts...)
+		_, err := cb.Execute(func() (interface{}, error) {
+			return nil, invoker(ctx, method, req, reply, cc, opts...)
+		})
 		
 		if err != nil {
 			logger.Error("gRPC call failed (Circuit Breaker Tripped/Error)", "method", method, "error", err, "duration", time.Since(start))
@@ -54,98 +71,92 @@ func dialOptions() []grpc.DialOption {
 		grpc.WithDefaultCallOptions(
 			grpc.WaitForReady(true),
 		),
-		grpc.WithUnaryInterceptor(traceInterceptor()),
+		grpc.WithUnaryInterceptor(traceAndCircuitBreakerInterceptor()),
 	}
 }
 
 // ─── Core gRPC Client (Problem + Submission) ────────────────────────────────
 
-// CoreClient wraps both ProblemService and SubmissionService stubs backed by
-// a single gRPC connection to the core service.
 type CoreClient struct {
-	conn   *grpc.ClientConn
-	target string
+	conn       *grpc.ClientConn
+	target     string
+	problemCli pb.ProblemServiceClient
+	submitCli  pb.SubmissionServiceClient
 }
 
-// NewCoreClient dials the core gRPC endpoint.  target should be host:port.
 func NewCoreClient(target string) (*CoreClient, error) {
 	conn, err := grpc.Dial(target, dialOptions()...)
 	if err != nil {
 		return nil, fmt.Errorf("grpc dial core [%s]: %w", target, err)
 	}
 	logger.Info("gRPC connection established to core service", "target", target)
-	return &CoreClient{conn: conn, target: target}, nil
+	return &CoreClient{
+		conn:       conn,
+		target:     target,
+		problemCli: pb.NewProblemServiceClient(conn),
+		submitCli:  pb.NewSubmissionServiceClient(conn),
+	}, nil
 }
 
-// GetProblem fetches problem metadata via gRPC (replaces REST GET /api/v1/problems/:id).
 func (c *CoreClient) GetProblem(ctx context.Context, problemID string) (*pb.GetProblemResponse, error) {
 	ctx, cancel := context.WithTimeout(ctx, defaultTimeout)
 	defer cancel()
 
-	// In production use the protoc-generated client; here we call via raw invoke
-	// so there is no dependency on protoc at build time.
 	req := &pb.GetProblemRequest{ProblemId: problemID}
-	var resp pb.GetProblemResponse
-
-	err := c.conn.Invoke(ctx, "/codewarz.ProblemService/GetProblem", req, &resp)
+	resp, err := c.problemCli.GetProblem(ctx, req)
 	if err != nil {
 		return nil, fmt.Errorf("GetProblem rpc: %w", err)
 	}
-	return &resp, nil
+	return resp, nil
 }
 
-// PersistVerdict writes a submission verdict via gRPC
-// (replaces REST PATCH /api/v1/submissions/:id).
 func (c *CoreClient) PersistVerdict(ctx context.Context, req *pb.PersistVerdictRequest) (*pb.PersistVerdictResponse, error) {
 	ctx, cancel := context.WithTimeout(ctx, defaultTimeout)
 	defer cancel()
 
-	var resp pb.PersistVerdictResponse
-	err := c.conn.Invoke(ctx, "/codewarz.SubmissionService/PersistVerdict", req, &resp)
+	resp, err := c.submitCli.PersistVerdict(ctx, req)
 	if err != nil {
 		return nil, fmt.Errorf("PersistVerdict rpc: %w", err)
 	}
-	return &resp, nil
+	return resp, nil
 }
 
-// Close tears down the underlying gRPC connection.
 func (c *CoreClient) Close() error {
 	return c.conn.Close()
 }
 
 // ─── Leaderboard gRPC Client ─────────────────────────────────────────────────
 
-// LeaderboardClient wraps the LeaderboardService stub.
 type LeaderboardClient struct {
-	conn   *grpc.ClientConn
-	target string
+	conn      *grpc.ClientConn
+	target    string
+	leaderCli pb.LeaderboardServiceClient
 }
 
-// NewLeaderboardClient dials the leaderboard gRPC endpoint.
 func NewLeaderboardClient(target string) (*LeaderboardClient, error) {
 	conn, err := grpc.Dial(target, dialOptions()...)
 	if err != nil {
 		return nil, fmt.Errorf("grpc dial leaderboard [%s]: %w", target, err)
 	}
 	logger.Info("gRPC connection established to leaderboard service", "target", target)
-	return &LeaderboardClient{conn: conn, target: target}, nil
+	return &LeaderboardClient{
+		conn:      conn,
+		target:    target,
+		leaderCli: pb.NewLeaderboardServiceClient(conn),
+	}, nil
 }
 
-// UpdateLeaderboard updates a user's leaderboard position via gRPC
-// (replaces REST POST /api/v1/leaderboard).
 func (c *LeaderboardClient) UpdateLeaderboard(ctx context.Context, req *pb.UpdateLeaderboardRequest) (*pb.UpdateLeaderboardResponse, error) {
 	ctx, cancel := context.WithTimeout(ctx, defaultTimeout)
 	defer cancel()
 
-	var resp pb.UpdateLeaderboardResponse
-	err := c.conn.Invoke(ctx, "/codewarz.LeaderboardService/UpdateLeaderboard", req, &resp)
+	resp, err := c.leaderCli.UpdateLeaderboard(ctx, req)
 	if err != nil {
 		return nil, fmt.Errorf("UpdateLeaderboard rpc: %w", err)
 	}
-	return &resp, nil
+	return resp, nil
 }
 
-// Close tears down the underlying gRPC connection.
 func (c *LeaderboardClient) Close() error {
 	return c.conn.Close()
 }

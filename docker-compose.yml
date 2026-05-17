@@ -80,6 +80,30 @@ services:
     networks:
       - codewarz-network
 
+  evaluation-service-go:
+    build:
+      context: ./evaluation-service-go
+      dockerfile: Dockerfile
+    deploy:
+      mode: replicated
+      replicas: 2
+    environment:
+      - SERVICE_NAME=evaluation-service-go
+      - PORT=3004
+      - RABBITMQ_URL=amqp://codewarz:codewarz@rabbitmq:5672
+      - CORE_SERVICE_URL=http://core:3001
+      - INTERNAL_API_KEY=${INTERNAL_API_KEY:-INTERNAL_KEY}
+      - HOST_WORKSPACES_ROOT=/Users/cvlikhith/CodeWarz/temp_workspaces
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./temp_workspaces:/app/temp_workspaces
+    depends_on:
+      - redis
+      - rabbitmq
+      - core
+    networks:
+      - codewarz-network
+
   evaluation-service:
     build:
       context: .

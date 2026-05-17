@@ -64,9 +64,18 @@ app.get("/health/circuit-breakers", (req, res) => {
     res.json({ success: true, data: breakers });
 });
 
+import { getOutboxStats } from './service/outbox.service';
+import { processOutboxBatch } from './service/outbox.service';
+
+app.get("/health/outbox", async (req, res) => {
+    const stats = await getOutboxStats();
+    res.json({ success: true, data: stats });
+});
+
 import { queueMonitorService } from './service/queueMonitor.service';
 import { setupRabbitMQTopology } from './queues/rabbitmq';
 import { startPlagiarismConsumer } from './queues/plagiarism/consumer.queue';
+import { backpressureMonitor } from './service/backpressure.service';
 
 async function startServer() {
     try {
@@ -78,6 +87,15 @@ async function startServer() {
     }
 
     startPlagiarismConsumer();
+
+    setInterval(async () => {
+        const processed = await processOutboxBatch(20);
+        if (processed > 0) {
+            logger.info(`Outbox processor: published ${processed} messages`);
+        }
+    }, 2000);
+
+    backpressureMonitor.startMonitoring(['submission-queue', 'verdict-queue', 'plagiarism-queue']);
 
     app.listen(serverConfig.PORT, () => {
         logger.info(`Server is running on http://localhost:${serverConfig.PORT}`);

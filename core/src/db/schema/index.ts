@@ -7,3 +7,4 @@ export * from './user';
 export * from './relations';
 export * from './plagiarism';
 export * from './events';
+export * from './outbox';

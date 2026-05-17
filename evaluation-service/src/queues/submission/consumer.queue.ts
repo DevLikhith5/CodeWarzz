@@ -6,6 +6,7 @@ import { asyncLocalStorage } from "../../../../core/src/utils/helpers/request.he
 import { metricsService } from "../../../../core/src/service/metrics.service";
 import { redis } from "../../config/redis.config";
 import { getCircuitBreaker } from "../../../../core/src/utils/circuitBreaker";
+import { isIdempotent, markProcessed } from "../../../../core/src/middlewares/idempotency.middleware";
 
 const CORE_SERVICE_URL = process.env.CORE_SERVICE_URL || "http://localhost:3000";
 const INTERNAL_API_KEY = process.env.INTERNAL_API_KEY || 'INTERNAL_KEY';
@@ -178,6 +179,14 @@ export const startSubmissionConsumer = () => {
     const end = metricsService.getJobProcessingDuration().startTimer({ queue_name: 'submission-queue', job_name: data.isRunOnly ? 'run' : 'submission' });
     metricsService.getSubmissionTotal().inc({ language: data.language, type: data.isRunOnly ? 'run' : 'submission' });
 
+    const idempotencyKey = `eval:${data.submissionId || data.jobId}`;
+    const alreadyProcessed = await isIdempotent(idempotencyKey);
+    if (alreadyProcessed) {
+      logger.info(`Idempotent hit, skipping: ${idempotencyKey}`);
+      end({ status: 'success' });
+      return;
+    }
+
     const {
       submissionId,
       userId,
@@ -288,6 +297,8 @@ export const startSubmissionConsumer = () => {
 
       return evaluationResult;
     });
+
+    await markProcessed(idempotencyKey, { verdict: result.verdict }, 3600);
 
     end({ status: 'success' });
     return result;

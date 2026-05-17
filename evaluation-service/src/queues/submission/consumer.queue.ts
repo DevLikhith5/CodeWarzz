@@ -1,15 +1,13 @@
-import { Worker } from "bullmq";
-import { getRedisConnObject, createWorkerConnection } from "../../config/redis.config";
+import { consumeSubmissionQueue, MessageHandler } from '../../../../core/src/queues/rabbitmq';
 import { runSandbox } from "../../sandbox/runSandbox";
-import { pushToLeaderboardQueue } from "../verdict/leaderboard.producer";
+import { publishVerdict } from '../../../../core/src/queues/rabbitmq';
 import logger from "../../config/logger.config";
 import { asyncLocalStorage } from "../../../../core/src/utils/helpers/request.helpers";
 import { metricsService } from "../../../../core/src/service/metrics.service";
+import { redis } from "../../config/redis.config";
 
 const CORE_SERVICE_URL = process.env.CORE_SERVICE_URL || "http://localhost:3000";
 const INTERNAL_API_KEY = process.env.INTERNAL_API_KEY || 'INTERNAL_KEY';
-
-
 
 const fetchProblemData = async (problemId: string) => {
   const problemResponse = await fetch(`${CORE_SERVICE_URL}/api/v1/problems/${problemId}`);
@@ -80,7 +78,6 @@ const calculateTimeTaken = async (contestId: string | undefined, submissionCreat
   let contestEndTime: string | number | undefined;
 
   if (contestId && submissionCreatedAt) {
-    // Fetch contest start time to calculate penalty
     const contestResponse = await fetch(`${CORE_SERVICE_URL}/api/v1/contests/${contestId}`);
     if (contestResponse.ok) {
       const contestDataJson = await contestResponse.json() as any;
@@ -110,13 +107,10 @@ const handleLeaderboardUpdate = async (params: {
 
   if (verdict !== "AC") return;
 
-
   let shouldUpdateLeaderboard = !!contestId;
 
   if (contestId) {
-    const redis = getRedisConnObject();
     const solvedKey = `CodeWarz:Solved:${contestId}:${userId}`;
-    // sadd returns 1 if added (first time), 0 if already exists
     const isFirstSolve = await redis.sadd(solvedKey, problemId);
 
     if (isFirstSolve === 0) {
@@ -136,7 +130,7 @@ const handleLeaderboardUpdate = async (params: {
     if (!contestId) {
       throw new Error("Contest ID is required for leaderboard update");
     }
-    await pushToLeaderboardQueue({
+    await publishVerdict({
       submissionId,
       contestId,
       userId,
@@ -150,142 +144,136 @@ const handleLeaderboardUpdate = async (params: {
   }
 };
 
+const storeRunResult = async (jobId: string, result: any) => {
+  try {
+    await redis.setex(`run-result:${jobId}`, 300, JSON.stringify({
+      status: 'completed',
+      data: result,
+    }));
+  } catch (err: any) {
+    logger.error(`Failed to store run result for ${jobId}: ${err.message}`);
+  }
+};
 
 export const startSubmissionConsumer = () => {
-  logger.info("Starting submission consumer...");
-  const worker = new Worker(
-    "submission-queue",
-    async (job) => {
-      const end = metricsService.getJobProcessingDuration().startTimer({ queue_name: 'submission-queue', job_name: job.data.isRunOnly ? 'run' : 'submission' });
-      metricsService.getSubmissionTotal().inc({ language: job.data.language, type: job.data.isRunOnly ? 'run' : 'submission' });
+  logger.info("Starting RabbitMQ submission consumer...");
 
-      try {
-        const {
-          submissionId,
-          userId,
-          contestId,
-          problemId,
-          language,
-          code,
-          submissionCreatedAt,
-          isRunOnly,
-          testcases: customTestcases,
-          correlationId
-        } = job.data;
+  const handler: MessageHandler = async (data: any, correlationId: string) => {
+    const end = metricsService.getJobProcessingDuration().startTimer({ queue_name: 'submission-queue', job_name: data.isRunOnly ? 'run' : 'submission' });
+    metricsService.getSubmissionTotal().inc({ language: data.language, type: data.isRunOnly ? 'run' : 'submission' });
 
-        const result = await asyncLocalStorage.run({ correlationId: correlationId || 'unknown-job' }, async () => {
+    const {
+      submissionId,
+      userId,
+      contestId,
+      problemId,
+      language,
+      code,
+      submissionCreatedAt,
+      isRunOnly,
+      testcases: customTestcases,
+      jobId,
+    } = data;
 
-          logger.info(`Received Data for ${isRunOnly ? 'Run' : 'Submission'} ${submissionId || job.id}`, { data: job.data });
+    const result = await asyncLocalStorage.run({ correlationId: correlationId || 'unknown-job' }, async () => {
+      logger.info(`Received Data for ${isRunOnly ? 'Run' : 'Submission'} ${submissionId || jobId}`, { data });
 
-          const problem = await fetchProblemData(problemId);
-          const testcases = prepareTestcases(isRunOnly, customTestcases, problem);
+      const problem = await fetchProblemData(problemId);
+      const testcases = prepareTestcases(isRunOnly, customTestcases, problem);
 
-          const constraints = {
-            timeLimitMs: problem.timeLimitMs,
-            memoryLimitMb: problem.memoryLimitMb,
-            cpuLimit: problem.cpuLimit
-          };
+      const constraints = {
+        timeLimitMs: problem.timeLimitMs,
+        memoryLimitMb: problem.memoryLimitMb,
+        cpuLimit: problem.cpuLimit
+      };
 
-          const sandboxEnd = metricsService.getSandboxExecutionDuration().startTimer({ language, status: 'pending' });
-          const result = await runSandbox({
-            language,
-            code,
-            testcases,
-            constraints,
-            runAllTestcases: !!isRunOnly,
-          });
-          sandboxEnd({ status: 'completed' });
+      const sandboxEnd = metricsService.getSandboxExecutionDuration().startTimer({ language, status: 'pending' });
+      const sandboxResult = await runSandbox({
+        language,
+        code,
+        testcases,
+        constraints,
+        runAllTestcases: !!isRunOnly,
+      });
+      sandboxEnd({ status: 'completed' });
 
-          logger.info(`Result for ${isRunOnly ? 'Run' : 'Submission'} ${submissionId || job.id}`, { result });
+      logger.info(`Result for ${isRunOnly ? 'Run' : 'Submission'} ${submissionId || jobId}`, { result: sandboxResult });
 
-          metricsService.getVerdictTotal().inc({ verdict: result.verdict, contest_id: contestId || 'practice' });
+      metricsService.getVerdictTotal().inc({ verdict: sandboxResult.verdict, contest_id: contestId || 'practice' });
 
-          if (isRunOnly) {
-            return result;
-          }
-
-          // Calculate score and penalty
-          let score = 0;
-          let timeTakenInMs = result.timeTakenMs;
-          let contestEndTime: string | number | undefined;
-
-          if (result.verdict === "AC") {
-            score = problem.maxScore || 100;
-            const timeCalc = await calculateTimeTaken(contestId, submissionCreatedAt, result.timeTakenMs);
-            timeTakenInMs = timeCalc.timeTakenInMs;
-            contestEndTime = timeCalc.contestEndTime;
-          }
-
-          const evaluationResult = {
-            submissionId,
-            userId,
-            contestId,
-            verdict: result.verdict,
-            passed: result.passed,
-            lastExecutedTestCase: result.lastExecutedTestCase,
-            total: result.total,
-            timeTakenMs: result.timeTakenMs,
-            penaltyTimeMs: timeTakenInMs,
-            score,
-            actualOutput: result.actualOutput,
-            expectedOutput: result.expectedOutput,
-            errorMessage: result.error
-          };
-
-          await persistSubmission(submissionId, evaluationResult);
-
-          if (result.verdict === "AC") {
-            const MAX_PENALTY_MINS = 100000;
-            const penaltyMinutes = Math.floor(timeTakenInMs / (1000 * 60));
-            const finalEncodedScore = score + ((MAX_PENALTY_MINS - penaltyMinutes) / MAX_PENALTY_MINS);
-
-            await handleLeaderboardUpdate({
-              contestId,
-              userId,
-              problemId,
-              submissionId,
-              score: finalEncodedScore,
-              contestEndTime,
-              verdict: result.verdict
-            });
-
-            // We log penalty minutes here because we have the data
-            if (contestId) {
-              logger.info(`[EVALUATION] Penalty Calculated: ${penaltyMinutes} min`);
-            }
-          }
-
-          if (submissionCreatedAt) {
-            const e2eDuration = (Date.now() - new Date(submissionCreatedAt).getTime()) / 1000;
-            metricsService.getSubmissionE2EDuration().observe({ status: result.verdict === "AC" ? 'processed' : 'failed', language }, e2eDuration);
-          }
-
-          return evaluationResult;
-        });
-        end({ status: 'success' });
-        return result;
-      } catch (err) {
-        end({ status: 'failure' });
-        throw err;
+      if (isRunOnly) {
+        if (jobId) {
+          await storeRunResult(jobId, sandboxResult);
+        }
+        return sandboxResult;
       }
-    },
-    {
-      connection: createWorkerConnection(),
-      concurrency: 5,
-      lockDuration: 60000,      // 60 seconds - enough time for sandbox execution
-      lockRenewTime: 15000,     // Renew lock every 15 seconds
-      stalledInterval: 30000,   // Check for stalled jobs every 30 seconds
-    }
-  );
-  logger.info("Submission consumer started successfully.");
 
-  worker.on("completed", (job, result) => {
-    logger.info(`Submission ${job.id} evaluated`, { result });
+      let score = 0;
+      let timeTakenInMs = sandboxResult.timeTakenMs;
+      let contestEndTime: string | number | undefined;
+
+      if (sandboxResult.verdict === "AC") {
+        score = problem.maxScore || 100;
+        const timeCalc = await calculateTimeTaken(contestId, submissionCreatedAt, sandboxResult.timeTakenMs);
+        timeTakenInMs = timeCalc.timeTakenInMs;
+        contestEndTime = timeCalc.contestEndTime;
+      }
+
+      const evaluationResult = {
+        submissionId,
+        userId,
+        contestId,
+        verdict: sandboxResult.verdict,
+        passed: sandboxResult.passed,
+        lastExecutedTestCase: sandboxResult.lastExecutedTestCase,
+        total: sandboxResult.total,
+        timeTakenMs: sandboxResult.timeTakenMs,
+        penaltyTimeMs: timeTakenInMs,
+        score,
+        actualOutput: sandboxResult.actualOutput,
+        expectedOutput: sandboxResult.expectedOutput,
+        errorMessage: sandboxResult.error
+      };
+
+      await persistSubmission(submissionId, evaluationResult);
+
+      if (sandboxResult.verdict === "AC") {
+        const MAX_PENALTY_MINS = 100000;
+        const penaltyMinutes = Math.floor(timeTakenInMs / (1000 * 60));
+        const finalEncodedScore = score + ((MAX_PENALTY_MINS - penaltyMinutes) / MAX_PENALTY_MINS);
+
+        await handleLeaderboardUpdate({
+          contestId,
+          userId,
+          problemId,
+          submissionId,
+          score: finalEncodedScore,
+          contestEndTime,
+          verdict: sandboxResult.verdict
+        });
+
+        if (contestId) {
+          logger.info(`[EVALUATION] Penalty Calculated: ${penaltyMinutes} min`);
+        }
+      }
+
+      if (submissionCreatedAt) {
+        const e2eDuration = (Date.now() - new Date(submissionCreatedAt).getTime()) / 1000;
+        metricsService.getSubmissionE2EDuration().observe({ status: sandboxResult.verdict === "AC" ? 'processed' : 'failed', language }, e2eDuration);
+      }
+
+      return evaluationResult;
+    });
+
+    end({ status: 'success' });
+    return result;
+  };
+
+  consumeSubmissionQueue(handler, {
+    prefetch: 10,
+    maxRetries: 3,
+    retryDelayMs: 1000,
   });
 
-  worker.on("failed", (job, err) => {
-    logger.error(`Submission ${job?.id} failed`, { error: err });
-  });
-
-  return worker;
+  logger.info("RabbitMQ submission consumer started successfully.");
 };

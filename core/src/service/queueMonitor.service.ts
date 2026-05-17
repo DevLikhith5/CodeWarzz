@@ -1,7 +1,19 @@
-import { Queue } from 'bullmq';
 import { metricsService } from './metrics.service';
 import logger from '../config/logger.config';
-import { redis as connection } from '../config/redis.config';
+import { QUEUES } from '../queues/rabbitmq/config';
+
+const RABBITMQ_MANAGEMENT_URL = process.env.RABBITMQ_MANAGEMENT_URL || 'http://rabbitmq:15672';
+const RABBITMQ_USER = process.env.RABBITMQ_USER || 'codewarz';
+const RABBITMQ_PASS = process.env.RABBITMQ_PASS || 'codewarz';
+
+const MONITORED_QUEUES = [
+    QUEUES.SUBMISSION,
+    QUEUES.VERDICT,
+    QUEUES.PLAGIARISM,
+    QUEUES.SUBMISSION_DLQ,
+    QUEUES.VERDICT_DLQ,
+    QUEUES.PLAGIARISM_DLQ,
+];
 
 class QueueMonitorService {
     private isMonitoring = false;
@@ -12,42 +24,45 @@ class QueueMonitorService {
             return;
         }
 
-        logger.info("Starting Queue Monitor Service...");
-
-
-        this.monitorQueue('submission-queue', connection);
-        this.monitorQueue('leaderboard-queue', connection);
-        this.monitorQueue('scheduler-queue', connection);
-
-        this.isMonitoring = true;
-    }
-
-    public monitorQueue(queueName: string, connection: any) {
-        logger.info(`Starting metrics monitor for queue: ${queueName}`);
-
-        // We instantiate a Queue object just for monitoring (readonly)
-        const queue = new Queue(queueName, { connection });
+        logger.info("Starting RabbitMQ Queue Monitor Service...");
 
         const updateMetrics = async () => {
             try {
-                const counts = await queue.getJobCounts('waiting', 'active', 'failed', 'delayed', 'completed');
+                const auth = Buffer.from(`${RABBITMQ_USER}:${RABBITMQ_PASS}`).toString('base64');
 
-                metricsService.getQueueDepth().set({ queue_name: queueName, status: 'waiting' }, counts.waiting);
-                metricsService.getQueueDepth().set({ queue_name: queueName, status: 'active' }, counts.active);
-                metricsService.getQueueDepth().set({ queue_name: queueName, status: 'failed' }, counts.failed);
-                metricsService.getQueueDepth().set({ queue_name: queueName, status: 'delayed' }, counts.delayed);
-                metricsService.getQueueDepth().set({ queue_name: queueName, status: 'completed' }, counts.completed);
+                for (const queueName of MONITORED_QUEUES) {
+                    const response = await fetch(`${RABBITMQ_MANAGEMENT_URL}/api/queues/%2F/${queueName}`, {
+                        headers: {
+                            'Authorization': `Basic ${auth}`,
+                        },
+                    });
 
-            } catch (error) {
-                logger.error(`Failed to update metrics for queue ${queueName}`, { error });
+                    if (!response.ok) {
+                        if (response.status === 404) {
+                            continue;
+                        }
+                        throw new Error(`HTTP ${response.status}`);
+                    }
+
+                    const data = await response.json() as any;
+
+                    const messagesReady = data.messages_ready || 0;
+                    const messagesUnacknowledged = data.messages_unacknowledged || 0;
+                    const messagesTotal = data.messages || 0;
+
+                    metricsService.getQueueDepth().set({ queue_name: queueName, status: 'waiting' }, messagesReady);
+                    metricsService.getQueueDepth().set({ queue_name: queueName, status: 'active' }, messagesUnacknowledged);
+                    metricsService.getQueueDepth().set({ queue_name: queueName, status: 'total' }, messagesTotal);
+                }
+            } catch (error: any) {
+                logger.error(`Failed to update RabbitMQ queue metrics: ${error.message}`);
             }
         };
 
-        // Initial update
         updateMetrics();
-
-        // Poll every 5 seconds
         setInterval(updateMetrics, 5000);
+
+        this.isMonitoring = true;
     }
 }
 

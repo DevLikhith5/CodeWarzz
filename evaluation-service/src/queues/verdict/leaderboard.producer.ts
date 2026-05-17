@@ -1,5 +1,4 @@
-import { Queue } from "bullmq";
-import { getRedisConnObject } from "../../config/redis.config";
+import { publishVerdict } from '../../../../core/src/queues/rabbitmq';
 
 export interface LeaderboardJobPayload {
   submissionId: string;
@@ -9,24 +8,8 @@ export interface LeaderboardJobPayload {
   contestEndTime?: string | number;
 }
 
-const leaderboardQueue = new Queue("leaderboard-queue", {
-  connection: getRedisConnObject(),
-});
-
-export async function pushToLeaderboardQueue(
-  payload: LeaderboardJobPayload
-) {
-  await leaderboardQueue.add(
-    "update-leaderboard",
-    payload,
-    {
-      attempts: 3,
-      backoff: {
-        type: "exponential",
-        delay: 1000,
-      },
-      removeOnComplete: true,
-      removeOnFail: false,
-    }
-  );
+export async function pushToLeaderboardQueue(payload: LeaderboardJobPayload) {
+  await publishVerdict(payload, {
+    correlationId: payload.submissionId,
+  });
 }

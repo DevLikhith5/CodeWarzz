@@ -1,13 +1,2 @@
-import { Queue } from "bullmq";
-import { getRedisConnObject } from "./redis.config";
-
-let verdictQueue: Queue | null = null;
-
-export const getVerdictQueue = () => {
-  if (!verdictQueue) {
-    verdictQueue = new Queue("leaderboard-queue", {
-      connection: getRedisConnObject(),
-    });
-  }
-  return verdictQueue;
-};
+// Queue configuration has been migrated to RabbitMQ.
+// See core/src/queues/rabbitmq/config.ts for exchange/queue definitions.

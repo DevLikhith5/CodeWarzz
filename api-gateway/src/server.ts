@@ -9,6 +9,9 @@ import { correlationIdMiddleware } from "../../core/src/middlewares/correlation.
 
 import { metricsService } from "../../core/src/service/metrics.service";
 import logger from "./config/logger.config";
+import { initTracing } from "./config/tracing";
+
+initTracing();
 
 const app = express();
 const PORT = process.env.PORT || 3000;

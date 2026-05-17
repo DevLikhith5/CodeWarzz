@@ -5,6 +5,10 @@ import v1Router from './routers/v1/index.router';
 import v2Router from './routers/v2/index.router';
 import { appErrorHandler, genericErrorHandler } from './middlewares/error.middleware';
 import logger from './config/logger.config';
+import { initTracing } from './tracing';
+
+initTracing();
+
 const app = express();
 
 
@@ -54,10 +58,23 @@ app.get("/metrics", async (req, res) => {
 });
 
 import { queueMonitorService } from './service/queueMonitor.service';
+import { setupRabbitMQTopology } from './queues/rabbitmq';
 
-app.listen(serverConfig.PORT, () => {
-    logger.info(`Server is running on http://localhost:${serverConfig.PORT}`);
-    queueMonitorService.startMonitoring();
-    logger.info("SERVER RESTARTED - LOGGING VERIFIED");
-    logger.info(`Press Ctrl+C to stop the server.`);
-});
+async function startServer() {
+    try {
+        await setupRabbitMQTopology();
+        logger.info('RabbitMQ topology initialized');
+    } catch (err: any) {
+        logger.error('Failed to initialize RabbitMQ topology', { error: err.message });
+        process.exit(1);
+    }
+
+    app.listen(serverConfig.PORT, () => {
+        logger.info(`Server is running on http://localhost:${serverConfig.PORT}`);
+        queueMonitorService.startMonitoring();
+        logger.info("SERVER RESTARTED - LOGGING VERIFIED");
+        logger.info(`Press Ctrl+C to stop the server.`);
+    });
+}
+
+startServer();

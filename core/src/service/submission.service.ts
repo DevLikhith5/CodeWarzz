@@ -6,6 +6,7 @@ import { ForbiddenError } from "../utils/errors/app.error";
 import logger from "../config/logger.config";
 import { v4 as uuidv4 } from 'uuid';
 import { redis } from "../config/redis.config";
+import { appendEvent } from "../service/eventStore.service";
 
 export type CreateSubmissionDTO = Omit<SubmissionInsert, 'id' | 'createdAt'>;
 
@@ -30,6 +31,14 @@ export class SubmissionService {
             }
         }
         const submission = await submissionRepository.createSubmission(data);
+
+        await appendEvent('submission', submission.id, 'SUBMISSION_CREATED', {
+            userId: data.userId,
+            problemId: data.problemId,
+            contestId: data.contestId,
+            language: data.language,
+        });
+
         const payload = {
             submissionId: submission.id,
             userId: data.userId,
@@ -41,6 +50,11 @@ export class SubmissionService {
         };
         const isContest = !!data.contestId;
         await enqueueSubmission(payload, isContest);
+
+        await appendEvent('submission', submission.id, 'SUBMISSION_QUEUED', {
+            isContest,
+        });
+
         if (data.userId) {
             userRepository.incrementUserActivity(data.userId).catch(err => {
                 logger.error(`Failed to update user activity for ${data.userId}`, err);
@@ -122,6 +136,17 @@ export class SubmissionService {
                 }
             }
         }
+
+        if (data.verdict) {
+            await appendEvent('submission', id, 'SUBMISSION_COMPLETED', {
+                verdict: data.verdict,
+                score: data.score,
+                timeTakenMs: data.timeTakenMs,
+                passedTestcases: data.passedTestcases,
+                totalTestcases: data.totalTestcases,
+            });
+        }
+
         return await submissionRepository.updateSubmission(id, data);
     }
 }

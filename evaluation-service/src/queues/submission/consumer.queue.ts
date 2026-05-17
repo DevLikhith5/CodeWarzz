@@ -5,22 +5,31 @@ import logger from "../../config/logger.config";
 import { asyncLocalStorage } from "../../../../core/src/utils/helpers/request.helpers";
 import { metricsService } from "../../../../core/src/service/metrics.service";
 import { redis } from "../../config/redis.config";
+import { getCircuitBreaker } from "../../../../core/src/utils/circuitBreaker";
 
 const CORE_SERVICE_URL = process.env.CORE_SERVICE_URL || "http://localhost:3000";
 const INTERNAL_API_KEY = process.env.INTERNAL_API_KEY || 'INTERNAL_KEY';
 
-const fetchProblemData = async (problemId: string) => {
-  const problemResponse = await fetch(`${CORE_SERVICE_URL}/api/v1/problems/${problemId}`);
-  if (!problemResponse.ok) {
-    throw new Error(`Failed to fetch problem ${problemId}: ${problemResponse.statusText}`);
-  }
-  const problemDataJson = await problemResponse.json() as any;
-  const problem = problemDataJson.data;
+const coreServiceBreaker = getCircuitBreaker('core-service-api', {
+    failureThreshold: 3,
+    recoveryTimeoutMs: 15000,
+    halfOpenMaxAttempts: 2,
+});
 
-  if (!problem) {
-    throw new Error(`Problem data not found for id ${problemId}`);
-  }
-  return problem;
+const fetchProblemData = async (problemId: string) => {
+    return coreServiceBreaker.execute(async () => {
+        const problemResponse = await fetch(`${CORE_SERVICE_URL}/api/v1/problems/${problemId}`);
+        if (!problemResponse.ok) {
+            throw new Error(`Failed to fetch problem ${problemId}: ${problemResponse.statusText}`);
+        }
+        const problemDataJson = await problemResponse.json() as any;
+        const problem = problemDataJson.data;
+
+        if (!problem) {
+            throw new Error(`Problem data not found for id ${problemId}`);
+        }
+        return problem;
+    });
 };
 
 const prepareTestcases = (isRunOnly: boolean, customTestcases: any[], problem: any) => {
@@ -43,33 +52,40 @@ const prepareTestcases = (isRunOnly: boolean, customTestcases: any[], problem: a
 
 const persistSubmission = async (submissionId: string, evaluationResult: any) => {
   try {
-    const persistResponse = await fetch(`${CORE_SERVICE_URL}/api/v1/submissions/${submissionId}`, {
-      method: 'PATCH',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-internal-api-key': INTERNAL_API_KEY
-      },
-      body: JSON.stringify({
-        verdict: evaluationResult.verdict,
-        score: evaluationResult.score,
-        timeTakenMs: evaluationResult.timeTakenMs,
-        passedTestcases: evaluationResult.passed,
-        totalTestcases: evaluationResult.total,
-        failedInput: evaluationResult.lastExecutedTestCase?.input,
-        failedExpected: evaluationResult.expectedOutput,
-        failedOutput: evaluationResult.actualOutput,
-        errorMessage: evaluationResult.errorMessage
-      })
-    });
+    await coreServiceBreaker.execute(async () => {
+        const persistResponse = await fetch(`${CORE_SERVICE_URL}/api/v1/submissions/${submissionId}`, {
+            method: 'PATCH',
+            headers: {
+                'Content-Type': 'application/json',
+                'x-internal-api-key': INTERNAL_API_KEY
+            },
+            body: JSON.stringify({
+                verdict: evaluationResult.verdict,
+                score: evaluationResult.score,
+                timeTakenMs: evaluationResult.timeTakenMs,
+                passedTestcases: evaluationResult.passed,
+                totalTestcases: evaluationResult.total,
+                failedInput: evaluationResult.lastExecutedTestCase?.input,
+                failedExpected: evaluationResult.expectedOutput,
+                failedOutput: evaluationResult.actualOutput,
+                errorMessage: evaluationResult.errorMessage
+            })
+        });
 
-    if (!persistResponse.ok) {
-      const errorBody = await persistResponse.text();
-      logger.error(`Failed to persist submission ${submissionId}: ${persistResponse.statusText}`, { error: errorBody });
-    } else {
-      logger.info(`[EVALUATION] Submission ${submissionId} persisted successfully.`);
-    }
+        if (!persistResponse.ok) {
+            const errorBody = await persistResponse.text();
+            logger.error(`Failed to persist submission ${submissionId}: ${persistResponse.statusText}`, { error: errorBody });
+            throw new Error(`Persist failed: ${persistResponse.statusText}`);
+        }
+
+        logger.info(`[EVALUATION] Submission ${submissionId} persisted successfully.`);
+    });
   } catch (err: any) {
-    logger.error(`Error calling persistence API for ${submissionId}: ${err.message}`);
+    if (err.message.includes('Circuit breaker')) {
+        logger.error(`Circuit breaker OPEN for core service, persisting submission skipped`, { submissionId });
+    } else {
+        logger.error(`Error calling persistence API for ${submissionId}: ${err.message}`);
+    }
   }
 };
 

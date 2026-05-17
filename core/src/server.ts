@@ -57,6 +57,13 @@ app.get("/metrics", async (req, res) => {
     res.end(await metricsService.getRegistry().metrics());
 });
 
+import { getAllCircuitBreakers } from './utils/circuitBreaker';
+
+app.get("/health/circuit-breakers", (req, res) => {
+    const breakers = getAllCircuitBreakers().map(b => b.getMetrics());
+    res.json({ success: true, data: breakers });
+});
+
 import { queueMonitorService } from './service/queueMonitor.service';
 import { setupRabbitMQTopology } from './queues/rabbitmq';
 import { startPlagiarismConsumer } from './queues/plagiarism/consumer.queue';

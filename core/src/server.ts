@@ -5,6 +5,10 @@ import v1Router from './routers/v1/index.router';
 import v2Router from './routers/v2/index.router';
 import { appErrorHandler, genericErrorHandler } from './middlewares/error.middleware';
 import logger from './config/logger.config';
+import { initTracing } from './tracing';
+
+initTracing();
+
 const app = express();
 
 
@@ -53,11 +57,34 @@ app.get("/metrics", async (req, res) => {
     res.end(await metricsService.getRegistry().metrics());
 });
 
-import { queueMonitorService } from './service/queueMonitor.service';
+import { getAllCircuitBreakers } from './utils/circuitBreaker';
 
-app.listen(serverConfig.PORT, () => {
-    logger.info(`Server is running on http://localhost:${serverConfig.PORT}`);
-    queueMonitorService.startMonitoring();
-    logger.info("SERVER RESTARTED - LOGGING VERIFIED");
-    logger.info(`Press Ctrl+C to stop the server.`);
+app.get("/health/circuit-breakers", (req, res) => {
+    const breakers = getAllCircuitBreakers().map(b => b.getMetrics());
+    res.json({ success: true, data: breakers });
 });
+
+import { queueMonitorService } from './service/queueMonitor.service';
+import { setupRabbitMQTopology } from './queues/rabbitmq';
+import { startPlagiarismConsumer } from './queues/plagiarism/consumer.queue';
+
+async function startServer() {
+    try {
+        await setupRabbitMQTopology();
+        logger.info('RabbitMQ topology initialized');
+    } catch (err: any) {
+        logger.error('Failed to initialize RabbitMQ topology', { error: err.message });
+        process.exit(1);
+    }
+
+    startPlagiarismConsumer();
+
+    app.listen(serverConfig.PORT, () => {
+        logger.info(`Server is running on http://localhost:${serverConfig.PORT}`);
+        queueMonitorService.startMonitoring();
+        logger.info("SERVER RESTARTED - LOGGING VERIFIED");
+        logger.info(`Press Ctrl+C to stop the server.`);
+    });
+}
+
+startServer();

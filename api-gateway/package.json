@@ -7,6 +7,12 @@
         "dev": "nodemon src/server.ts"
     },
     "dependencies": {
+        "@opentelemetry/api": "^1.9.1",
+        "@opentelemetry/auto-instrumentations-node": "^0.75.0",
+        "@opentelemetry/exporter-jaeger": "^2.7.1",
+        "@opentelemetry/instrumentation-express": "^0.66.0",
+        "@opentelemetry/instrumentation-http": "^0.218.0",
+        "@opentelemetry/sdk-node": "^0.218.0",
         "cookie-parser": "^1.4.7",
         "cors": "^2.8.5",
         "dotenv": "^16.4.7",

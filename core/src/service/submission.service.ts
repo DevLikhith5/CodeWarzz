@@ -1,10 +1,12 @@
 import { submissionRepository, SubmissionInsert } from "../repository/submission.repository";
 import { contestRepository } from "../repository/contest.repository";
-import { submissionQueue } from "../queues/submission.queue";
+import { enqueueSubmission, enqueueRun } from "../queues/submission.queue";
 import { userRepository } from "../repository/user.repository";
 import { ForbiddenError } from "../utils/errors/app.error";
 import logger from "../config/logger.config";
 import { v4 as uuidv4 } from 'uuid';
+import { redis } from "../config/redis.config";
+import { appendEvent } from "../service/eventStore.service";
 
 export type CreateSubmissionDTO = Omit<SubmissionInsert, 'id' | 'createdAt'>;
 
@@ -29,6 +31,14 @@ export class SubmissionService {
             }
         }
         const submission = await submissionRepository.createSubmission(data);
+
+        await appendEvent('submission', submission.id, 'SUBMISSION_CREATED', {
+            userId: data.userId,
+            problemId: data.problemId,
+            contestId: data.contestId,
+            language: data.language,
+        });
+
         const payload = {
             submissionId: submission.id,
             userId: data.userId,
@@ -38,7 +48,13 @@ export class SubmissionService {
             code: data.code,
             submissionCreatedAt: submission.createdAt,
         };
-        await submissionQueue.add('evaluate-submission', payload);
+        const isContest = !!data.contestId;
+        await enqueueSubmission(payload, isContest);
+
+        await appendEvent('submission', submission.id, 'SUBMISSION_QUEUED', {
+            isContest,
+        });
+
         if (data.userId) {
             userRepository.incrementUserActivity(data.userId).catch(err => {
                 logger.error(`Failed to update user activity for ${data.userId}`, err);
@@ -80,37 +96,33 @@ export class SubmissionService {
             }
         }
 
+        const jobId = uuidv4();
         const payload = {
             ...data,
             isRunOnly: true,
             submissionCreatedAt: new Date(),
+            jobId,
         };
 
-        const jobId = uuidv4();
-        await submissionQueue.add('evaluate-submission', payload, {
-            jobId
-        });
-        // Note: For 'run', usually we wait for result or return job info. 
-        // Assuming async execution for now as per queue pattern.
-        return { message: "Run request queued", jobId: jobId };
+        await enqueueRun(payload);
+
+        await redis.setex(`run-result:${jobId}`, 300, JSON.stringify({ status: 'queued' }));
+
+        return { message: "Run request queued", jobId };
     }
 
     async getRunResult(jobId: string) {
-        //we need to do this because we wont store these runs in db they weill be temporatry in 
-        const job = await submissionQueue.getJob(jobId);
-        if (!job) {
+        const resultStr = await redis.get(`run-result:${jobId}`);
+        if (!resultStr) {
             return null;
         }
 
-        const state = await job.getState();
-        const result = job.returnvalue;
-        const error = job.failedReason;
-
+        const result = JSON.parse(resultStr);
         return {
-            jobId: job.id,
-            status: state,
-            result,
-            error
+            jobId,
+            status: result.status,
+            result: result.data || null,
+            error: result.error || null,
         };
     }
 
@@ -118,15 +130,23 @@ export class SubmissionService {
         if (data.verdict === 'AC') {
             const submission = await submissionRepository.getSubmissionById(id);
             if (submission && submission.userId) {
-                // Check if user already has an accepted submission for this problem
-                // This check runs BEFORE the current submission is updated to 'AC'
-                // So if no 'AC' exists yet, this is the first one.
                 const existingBest = await submissionRepository.getBestSubmission(submission.userId, submission.problemId);
                 if (!existingBest) {
                     await userRepository.incrementSolvedCount(submission.userId);
                 }
             }
         }
+
+        if (data.verdict) {
+            await appendEvent('submission', id, 'SUBMISSION_COMPLETED', {
+                verdict: data.verdict,
+                score: data.score,
+                timeTakenMs: data.timeTakenMs,
+                passedTestcases: data.passedTestcases,
+                totalTestcases: data.totalTestcases,
+            });
+        }
+
         return await submissionRepository.updateSubmission(id, data);
     }
 }

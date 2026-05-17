@@ -10,7 +10,14 @@
     "dev:all": "concurrently -n API,SUBMISSION,LEADERBOARD -c blue,green,yellow \"npm run dev:api\" \"npm run dev:submission-worker\" \"npm run dev:leaderboard-worker\""
   },
   "dependencies": {
-    "bullmq": "^5.66.2",
+    "@opentelemetry/api": "^1.9.1",
+    "@opentelemetry/auto-instrumentations-node": "^0.75.0",
+    "@opentelemetry/exporter-jaeger": "^2.7.1",
+    "@opentelemetry/instrumentation-express": "^0.66.0",
+    "@opentelemetry/instrumentation-http": "^0.218.0",
+    "@opentelemetry/instrumentation-ioredis": "^0.66.0",
+    "@opentelemetry/sdk-node": "^0.218.0",
+    "amqplib": "^0.10.3",
     "dotenv": "^16.4.7",
     "express": "^5.1.0",
     "ioredis": "^5.8.2",
@@ -21,6 +28,7 @@
     "zod": "^3.24.2"
   },
   "devDependencies": {
+    "@types/amqplib": "^0.10.4",
     "@types/express": "^5.0.1",
     "@types/morgan": "^1.9.10",
     "@types/node": "^22.19.3",

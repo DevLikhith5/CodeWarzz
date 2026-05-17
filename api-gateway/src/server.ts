@@ -9,9 +9,17 @@ import { correlationIdMiddleware } from "../../core/src/middlewares/correlation.
 
 import { metricsService } from "../../core/src/service/metrics.service";
 import logger from "./config/logger.config";
+import { initTracing } from "./config/tracing";
+import { getCircuitBreaker } from "../../core/src/utils/circuitBreaker";
+import { distributedRateLimiter } from "../../core/src/middlewares/rateLimiter.middleware";
+
+initTracing();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+const coreBreaker = getCircuitBreaker('gateway-core', { failureThreshold: 5, recoveryTimeoutMs: 30000 });
+const leaderboardBreaker = getCircuitBreaker('gateway-leaderboard', { failureThreshold: 5, recoveryTimeoutMs: 30000 });
 
 
 const CORE_SERVICE_URL = process.env.CORE_SERVICE_URL || "http://localhost:3001";
@@ -46,6 +54,8 @@ app.use(rateLimiter({
     maxTokens: 50,
     refillRate: 50 / 60,
 }));
+
+app.use(distributedRateLimiter());
 
 
 app.get("/metrics", async (req: Request, res: Response): Promise<void> => {

@@ -16,9 +16,17 @@
     "express": "^5.0.0"
   },
   "dependencies": {
+    "@opentelemetry/api": "^1.9.1",
+    "@opentelemetry/auto-instrumentations-node": "^0.75.0",
+    "@opentelemetry/exporter-jaeger": "^2.7.1",
+    "@opentelemetry/instrumentation-express": "^0.66.0",
+    "@opentelemetry/instrumentation-http": "^0.218.0",
+    "@opentelemetry/instrumentation-ioredis": "^0.66.0",
+    "@opentelemetry/instrumentation-pg": "^0.70.0",
+    "@opentelemetry/sdk-node": "^0.218.0",
+    "amqplib": "^0.10.3",
     "axios": "^1.13.2",
     "bcryptjs": "^3.0.3",
-    "bullmq": "^5.66.2",
     "cookie-parser": "^1.4.7",
     "dotenv": "^16.6.1",
     "drizzle-orm": "^0.45.1",
@@ -36,6 +44,7 @@
     "zod": "^3.24.2"
   },
   "devDependencies": {
+    "@types/amqplib": "^0.10.4",
     "@types/bcryptjs": "^2.4.6",
     "@types/cookie-parser": "^1.4.10",
     "@types/express": "^5.0.6",

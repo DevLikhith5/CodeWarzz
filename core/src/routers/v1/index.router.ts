@@ -1,5 +1,6 @@
 import express from 'express';
 import pingRouter from './ping.router';
+import { distributedRateLimiter } from '../../middlewares/rateLimiter.middleware';
 
 const v1Router = express.Router();
 
@@ -13,6 +14,13 @@ import leaderboardRouter from "./leaderboard.router";
 import userRouter from "./user.router";
 import plagiarismRouter from './plagiarism.router';
 import eventRouter from './event.router';
+
+// Apply rate limiting to expensive / sensitive endpoints
+v1Router.use('/submissions', distributedRateLimiter());
+v1Router.use('/auth/login', distributedRateLimiter());
+v1Router.use('/auth/signin', distributedRateLimiter());
+v1Router.use('/problems', distributedRateLimiter());
+v1Router.use('/leaderboard', distributedRateLimiter());
 
 v1Router.use('/auth', authRouter);
 v1Router.use('/ping', pingRouter);

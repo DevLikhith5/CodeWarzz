@@ -1,21 +1,21 @@
 import { NextFunction, Request, Response } from "express";
-import { AppError } from "../utils/errors/app.error";
+import { AppError, isAppError } from "../utils/errors/app.error";
 import logger from "../config/logger.config";
 import { metricsService } from "../service/metrics.service";
 
 
-export const appErrorHandler = (err: AppError, req: Request, res: Response, next: NextFunction) => {
+export const appErrorHandler = (err: Error, req: Request, res: Response, next: NextFunction) => {
 
-
-    if (!err.statusCode) {
+    if (!isAppError(err)) {
         return next(err);
     }
+    const appErr = err as AppError;
     logger.error("App Error:", { error: err });
-    metricsService.getAppErrorsTotal().inc({ type: 'AppError', code: err.statusCode || 500 });
+    metricsService.getAppErrorsTotal().inc({ type: 'AppError', code: appErr.statusCode });
 
-    res.status(err.statusCode || 500).json({
+    res.status(appErr.statusCode).json({
         success: false,
-        message: err.message
+        message: appErr.message
     });
 }
 

@@ -17,11 +17,22 @@ export async function updateLeaderboard({
   contestId,
   userId,
   score,
+  timeTakenInMs,
   contestEndTime,
 }: UpdateLeaderboardInput) {
   const redisKey = `CodeWarz:Leaderboard:${contestId}`;
 
-  await redis.zadd(redisKey, score, userId);
+  // Time-penalty encoding: earlier submissions get a tiny fractional bonus
+  // proportional to the inverse of time-taken. The fractional part is decoded
+  // back on read. We clamp to MAX_PENALTY_MINS to avoid negative scores.
+  const penaltyMinutes = Math.min(
+    MAX_PENALTY_MINS,
+    Math.max(0, Math.floor(timeTakenInMs / (1000 * 60)))
+  );
+  const fractionalBonus = (MAX_PENALTY_MINS - penaltyMinutes) / MAX_PENALTY_MINS;
+  const encodedScore = score + fractionalBonus;
+
+  await redis.zadd(redisKey, encodedScore, userId);
 
   if (contestEndTime) {
     const endTimeMs = new Date(contestEndTime).getTime();
@@ -57,13 +68,13 @@ export async function getTopLeaderboard(
     const rawScore = Number(data[i + 1]);
 
     // Decimal decoding: Points.FractionalPenalty
-    const score = Math.floor(rawScore);
-    const penaltyMinutes = Math.round((MAX_PENALTY_MINS - (rawScore - score) * MAX_PENALTY_MINS));
+    const points = Math.floor(rawScore);
+    const penaltyMinutes = Math.round((MAX_PENALTY_MINS - (rawScore - points) * MAX_PENALTY_MINS));
 
     leaderboard.push({
       userId: data[i],
       rawScore,
-      score,
+      score: points,
       penaltyMinutes,
     });
   }

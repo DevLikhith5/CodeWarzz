@@ -1,5 +1,7 @@
 import { problemRepository, ProblemInsert } from "../repository/problem.repository";
 import { BadRequestError } from "../utils/errors/app.error";
+import { addProblemToBloomFilter } from "./bloom.service";
+import logger from "../config/logger.config";
 
 interface CreateTestcaseInput {
     input: string;
@@ -49,7 +51,13 @@ export class ProblemService {
             isSample: tc.isSample ?? false
         }));
 
-        return await problemRepository.createProblemWithTestcases(problemData, testcasesData, input.contestId);
+        const problem = await problemRepository.createProblemWithTestcases(problemData, testcasesData, input.contestId);
+        // Add to bloom filter so the gateway doesn't shed traffic to this new
+        // problem as "non-existent". Failure is logged but doesn't fail the request.
+        addProblemToBloomFilter(problem.id).catch((err: any) =>
+            logger.error('Failed to add problem to bloom filter', { problemId: problem.id, error: err.message })
+        );
+        return problem;
     }
 
 

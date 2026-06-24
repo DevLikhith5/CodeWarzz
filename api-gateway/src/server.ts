@@ -12,7 +12,12 @@ import logger from "./config/logger.config";
 import { initTracing } from "./config/tracing";
 import { getCircuitBreaker } from "../../core/src/utils/circuitBreaker";
 import { distributedRateLimiter } from "../../core/src/middlewares/rateLimiter.middleware";
+import { csrfProtection } from "../../core/src/middlewares/csrf.middleware";
+import { shutdownCacheMiddleware } from "./middlewares/cache";
+import { redis } from "./config/redis.config";
+import { installProcessSafetyNet, gracefulShutdown } from "../../core/src/utils/bootstrap";
 
+installProcessSafetyNet('api-gateway');
 initTracing();
 
 const app = express();
@@ -25,6 +30,12 @@ const leaderboardBreaker = getCircuitBreaker('gateway-leaderboard', { failureThr
 const CORE_SERVICE_URL = process.env.CORE_SERVICE_URL || "http://localhost:3001";
 const LEADERBOARD_SERVICE_URL = process.env.LEADERBOARD_SERVICE_URL || "http://localhost:3002";
 
+
+// Configure trust proxy to be conservative. Trusting the entire chain allows
+// any client to spoof x-forwarded-for and bypass per-IP rate limits. In dev
+// we trust loopback only; in production, set TRUST_PROXY env to a CIDR.
+const trustProxy = process.env.TRUST_PROXY || 'loopback, linklocal, uniquelocal';
+app.set("trust proxy", trustProxy);
 
 app.use(helmet());
 app.use(cors({
@@ -43,8 +54,6 @@ import cookieParser from 'cookie-parser';
 app.use(cookieParser());
 
 
-
-
 import { metricsMiddleware } from "../../core/src/middlewares/metrics.middleware";
 
 app.use(correlationIdMiddleware);
@@ -56,6 +65,10 @@ app.use(rateLimiter({
 }));
 
 app.use(distributedRateLimiter());
+
+// CSRF protection: applied AFTER rate-limiting so that CSRF failures
+// count against the rate limit (preventing infinite CSRF probing).
+app.use(csrfProtection);
 
 import { bloomFilterMiddleware } from "./middlewares/bloomFilter";
 app.use(bloomFilterMiddleware);
@@ -73,7 +86,7 @@ app.get("/health", (req: Request, res: Response): void => {
 
 
 import { cacheMiddleware } from "./middlewares/cache";
-import { sseRouter } from "./routes/leaderboard.sse";
+import { sseRouter, shutdownSse } from "./routes/leaderboard.sse";
 
 app.use("/api/v1/leaderboard/stream", sseRouter);
 
@@ -87,7 +100,14 @@ app.use("/api/v1/leaderboard/live", cacheMiddleware(3), proxy(LEADERBOARD_SERVIC
         return proxyReqOpts;
     },
     proxyReqPathResolver: (req) => {
-        const contestId = req.url.split("/")[1];
+        // Path is /api/v1/leaderboard/live/:contestId/...
+        // Split and pick the first non-empty segment after /live/ as contestId.
+        const parts = req.url.split("/").filter(Boolean);
+        // parts[0] might be empty (leading slash), e.g. for "live/<id>/..."
+        const contestId = parts[1]; // first segment after the leading empty
+        if (!contestId || contestId.length === 0) {
+            throw new Error("contestId is required for leaderboard live endpoint");
+        }
         return `/api/v1/leaderboard/contest/${contestId}/top`;
     },
     proxyErrorHandler: (err, res, next) => {
@@ -150,12 +170,29 @@ import { appErrorHandler, genericErrorHandler } from "../../core/src/middlewares
 app.use(appErrorHandler);
 app.use(genericErrorHandler);
 
+let httpServer: any;
+
 if (require.main === module) {
-    app.listen(PORT, () => {
+    httpServer = app.listen(PORT, () => {
         logger.info(`API Gateway is running on http://localhost:${PORT}`);
         logger.info(`Proxying /api/v1/leaderboard -> ${LEADERBOARD_SERVICE_URL}`);
         logger.info(`Proxying /api/v1 (everything else) -> ${CORE_SERVICE_URL}`);
     });
+
+    // Graceful shutdown
+    const shutdown = (signal: string) =>
+        gracefulShutdown(
+            'api-gateway',
+            signal,
+            [httpServer],
+            [
+                () => shutdownSse(),
+                () => shutdownCacheMiddleware(),
+                () => (redis ? redis.quit() : undefined),
+            ]
+        );
+    process.on('SIGTERM', () => void shutdown('SIGTERM'));
+    process.on('SIGINT', () => void shutdown('SIGINT'));
 }
 
 export default app;

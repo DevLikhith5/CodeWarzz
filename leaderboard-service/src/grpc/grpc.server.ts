@@ -15,6 +15,7 @@
  */
 
 import path from 'path';
+import fs from 'fs';
 import * as grpc from '@grpc/grpc-js';
 import * as protoLoader from '@grpc/proto-loader';
 import logger from '../config/logger.config';
@@ -34,12 +35,40 @@ const packageDef = protoLoader.loadSync(PROTO_PATH, {
 const protoDescriptor = grpc.loadPackageDefinition(packageDef) as any;
 const codewarz = protoDescriptor.codewarz;
 
+// ─── TLS / Auth Configuration ────────────────────────────────────────────────
+
+const INTERNAL_API_KEY = process.env.INTERNAL_API_KEY;
+if (!INTERNAL_API_KEY || INTERNAL_API_KEY.length < 16) {
+    throw new Error('CRITICAL: INTERNAL_API_KEY must be set (16+ chars) for gRPC auth');
+}
+
+const TLS_KEY_PATH = process.env.GRPC_TLS_KEY_PATH;
+const TLS_CERT_PATH = process.env.GRPC_TLS_CERT_PATH;
+const USE_TLS = Boolean(TLS_KEY_PATH && TLS_CERT_PATH);
+
+if (process.env.NODE_ENV === 'production' && !USE_TLS) {
+    logger.warn('gRPC server is running INSECURE (no TLS). Set GRPC_TLS_KEY_PATH and GRPC_TLS_CERT_PATH in production.');
+}
+
+function authenticateInternalCall(metadata: grpc.Metadata): boolean {
+    const apiKey = metadata.get('x-internal-api-key');
+    if (apiKey.length === 0) return false;
+    return apiKey[0] === INTERNAL_API_KEY;
+}
+
 // ─── Handlers ────────────────────────────────────────────────────────────────
 
 async function updateLeaderboardHandler(
     call: grpc.ServerUnaryCall<any, any>,
     callback: grpc.sendUnaryData<any>,
 ) {
+    if (!authenticateInternalCall(call.metadata)) {
+        return callback({
+            code: grpc.status.UNAUTHENTICATED,
+            message: 'Missing or invalid x-internal-api-key',
+        });
+    }
+
     const { contestId, userId, score, timeTakenMs, contestEndTime } = call.request;
     const metadata = call.metadata.getMap();
     const correlationId = metadata['x-correlation-id'] || 'unknown';
@@ -76,9 +105,15 @@ async function getTopLeaderboardHandler(
     call: grpc.ServerUnaryCall<any, any>,
     callback: grpc.sendUnaryData<any>,
 ) {
+    if (!authenticateInternalCall(call.metadata)) {
+        return callback({
+            code: grpc.status.UNAUTHENTICATED,
+            message: 'Missing or invalid x-internal-api-key',
+        });
+    }
+
     const { contestId, limit } = call.request;
     try {
-        // Read from Read Model for 10x throughput
         const entries = await leaderboardReadModelService.getTop(contestId, limit || 50);
         callback(null, { contestId, entries });
     } catch (err: any) {
@@ -91,6 +126,13 @@ async function getUserRankHandler(
     call: grpc.ServerUnaryCall<any, any>,
     callback: grpc.sendUnaryData<any>,
 ) {
+    if (!authenticateInternalCall(call.metadata)) {
+        return callback({
+            code: grpc.status.UNAUTHENTICATED,
+            message: 'Missing or invalid x-internal-api-key',
+        });
+    }
+
     const { contestId, userId } = call.request;
     try {
         const result = await getUserRank(contestId, userId);
@@ -122,7 +164,25 @@ export function startLeaderboardGRPCServer(port: number | string = 50052): grpc.
     });
 
     const addr = `0.0.0.0:${port}`;
-    server.bindAsync(addr, grpc.ServerCredentials.createInsecure(), (err, boundPort) => {
+
+    let credentials: grpc.ServerCredentials;
+    if (USE_TLS) {
+        try {
+            const key = fs.readFileSync(TLS_KEY_PATH!);
+            const cert = fs.readFileSync(TLS_CERT_PATH!);
+            credentials = grpc.ServerCredentials.createSsl(null, [
+                { private_key: key, cert_chain: cert },
+            ]);
+            logger.info('Leaderboard gRPC server: TLS enabled');
+        } catch (err: any) {
+            logger.error('Failed to read TLS certs, falling back to insecure', { error: err.message });
+            credentials = grpc.ServerCredentials.createInsecure();
+        }
+    } else {
+        credentials = grpc.ServerCredentials.createInsecure();
+    }
+
+    server.bindAsync(addr, credentials, (err, boundPort) => {
         if (err) {
             logger.error('Failed to bind leaderboard gRPC server', { error: err.message });
             return;

@@ -1,4 +1,4 @@
-import { pgTable, uuid, varchar, doublePrecision, text, timestamp, boolean, index } from "drizzle-orm/pg-core";
+import { pgTable, uuid, varchar, doublePrecision, text, timestamp, boolean, index, uniqueIndex } from "drizzle-orm/pg-core";
 
 export const codeFingerprints = pgTable("code_fingerprints", {
     id: uuid("id").defaultRandom().primaryKey(),
@@ -21,6 +21,9 @@ export const plagiarismReports = pgTable("plagiarism_reports", {
     flagged: boolean("flagged").default(false).notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (table) => ({
+    // Unique on the (submission1, submission2) pair so a retried check
+    // can use INSERT ... ON CONFLICT DO NOTHING without producing dupes.
+    pairUnique: uniqueIndex("plagiarism_pair_uq").on(table.submissionId1, table.submissionId2),
     problemIndex: index("plagiarism_problem_idx").on(table.problemId),
     contestIndex: index("plagiarism_contest_idx").on(table.contestId),
     flaggedIndex: index("plagiarism_flagged_idx").on(table.flagged),

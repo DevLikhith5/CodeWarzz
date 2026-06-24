@@ -1,4 +1,4 @@
-import { execSync } from "child_process";
+import { execFileSync } from "child_process";
 import { Workspace } from "./workspace";
 import { LanguageConfig } from "./languageConfig";
 import logger from "../config/logger.config";
@@ -44,24 +44,35 @@ export function execute(
       logger.warn(`[EXECUTOR] HOST_WORKSPACES_ROOT not set! Using internal path: '${volumePath}'`);
     }
 
-    const command = `docker run --rm \
-       --network none \
-       --memory ${constraints.memoryLimitMb}m \
-       --cpus ${constraints.cpuLimit} \
-       --pids-limit 64 \
-       -v ${volumePath}:/app \
-       -w /app \
-       ${lang.image} \
-       sh -c "timeout ${timeLimitInSeconds} ${finalRunCommand}"`;
+    // Build the inner shell command as a single string. We pass it to `sh -c`
+    // via execFile (NOT execSync) to avoid any shell interpolation of args.
+    const innerCommand = `timeout ${timeLimitInSeconds} ${finalRunCommand}`;
 
-    logger.debug(`[EXECUTOR] Command: ${command}`);
+    // Use execFile (no shell) to avoid injection via env or constraints. Args
+    // are passed as a separate array so no shell metacharacter is interpreted.
+    const args = [
+      'run', '--rm',
+      '--network', 'none',
+      '--memory', `${constraints.memoryLimitMb}m`,
+      '--cpus', String(constraints.cpuLimit),
+      '--pids-limit', '64',
+      '--security-opt', 'seccomp=default',
+      '--security-opt', 'no-new-privileges:true',
+      '--read-only',
+      '--tmpfs', '/tmp:size=64m',
+      '-v', `${volumePath}:/app`,
+      '-w', '/app',
+      lang.image,
+      'sh', '-c', innerCommand,
+    ];
 
-    const output = execSync(command,
-      {
-        timeout: 20000,
-        stdio: "pipe",
-      }
-    );
+    logger.debug(`[EXECUTOR] docker ${args.join(' ')}`);
+
+    const output = execFileSync('docker', args, {
+      timeout: Math.max(30000, (timeLimitInSeconds + 10) * 1000),
+      stdio: "pipe",
+      killSignal: "SIGKILL",
+    });
 
     logger.debug(`[EXECUTOR] Finished in ${Date.now() - startTime}ms`);
     return output.toString().trim();
@@ -76,4 +87,3 @@ export function execute(
     throw new Error("RE");
   }
 }
-

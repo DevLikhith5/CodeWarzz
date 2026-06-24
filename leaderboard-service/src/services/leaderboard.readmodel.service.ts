@@ -117,12 +117,25 @@ export class LeaderboardReadModelService {
     async getTop(contestId: string, limit: number = 50): Promise<ReadModelEntry[]> {
         const readIdxKey = `CodeWarz:ReadModel:LBIdx:${contestId}`;
         const readHashKey = `CodeWarz:ReadModel:LB:${contestId}`;
+        const lockKey = `CodeWarz:ReadModel:Lock:${contestId}`;
 
-        // Check if read model exists; fall back to write model if cold
+        // Check if read model exists; fall back to write model if cold.
+        // Use a short Redis lock to prevent thundering-herd on concurrent
+        // projections during cache cold-start.
         const exists = await redis.exists(readIdxKey);
-        if (!exists) {
+        if (exists === 0) {
             logger.warn('CQRS read model cold, falling back to write model', { contestId });
-            await this.project(contestId);
+            const lockAcquired = await redis.set(lockKey, '1', 'PX', 10000, 'NX');
+            if (lockAcquired) {
+                try {
+                    await this.project(contestId);
+                } finally {
+                    await redis.del(lockKey);
+                }
+            } else {
+                // Another caller is projecting; wait briefly and re-read
+                await new Promise((r) => setTimeout(r, 100));
+            }
         }
 
         const userIds = await redis.zrevrange(readIdxKey, 0, limit - 1);

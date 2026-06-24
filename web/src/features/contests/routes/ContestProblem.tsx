@@ -391,9 +391,10 @@ const ContestProblem = () => {
                       </div>
                     </div>
 
-                    {/* Description */}
+                    {/* Description — render as plain text to avoid XSS from
+                        admin-supplied HTML in the problem description. */}
                     <div className="prose prose-invert prose-sm max-w-none">
-                      <div dangerouslySetInnerHTML={{ __html: problemData.description.replace(/\n/g, '<br/>') }} />
+                      <p className="whitespace-pre-wrap">{problemData.description}</p>
                     </div>
 
                     {/* Examples */}

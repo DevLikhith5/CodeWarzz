@@ -122,7 +122,7 @@ done`;
         // This test case didn't run or was cut short by TLE (if we didn't run all)
         tcVerdict = batchVerdict === "AC" ? "RE" : batchVerdict;
       } else {
-        const exitCode = parseInt(fs.readFileSync(exitFile, "utf8").trim());
+        const exitCode = parseInt(fs.readFileSync(exitFile, "utf8").trim(), 10);
         tcActual = fs.existsSync(outputFile) ? fs.readFileSync(outputFile, "utf8").trim() : undefined;
         tcError = fs.existsSync(errorFile) ? fs.readFileSync(errorFile, "utf8") : undefined;
 
@@ -175,6 +175,7 @@ done`;
       testcaseResults: runAllTestcases ? testcaseResults : undefined
     };
   } finally {
+    // cleanupWorkspace never throws; do not mask the original error.
     cleanupWorkspace(workspace);
   }
 }

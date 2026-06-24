@@ -3,9 +3,14 @@ import { JaegerExporter } from '@opentelemetry/exporter-jaeger';
 import { getNodeAutoInstrumentations } from '@opentelemetry/auto-instrumentations-node';
 import { SemanticResourceAttributes } from '@opentelemetry/semantic-conventions';
 import { SimpleSpanProcessor } from '@opentelemetry/sdk-trace-base';
+import logger from './logger.config';
 
 const SERVICE_NAME = process.env.SERVICE_NAME || 'api-gateway';
-const JAEGER_ENDPOINT = process.env.JAEGER_URL || 'http://localhost:14268/api/traces';
+function buildJaegerEndpoint(): string {
+    const raw = process.env.JAEGER_URL || 'http://localhost:14268';
+    return raw.endsWith('/api/traces') ? raw : `${raw.replace(/\/$/, '')}/api/traces`;
+}
+const JAEGER_ENDPOINT = buildJaegerEndpoint();
 
 let sdk: NodeSDK | null = null;
 
@@ -34,14 +39,18 @@ export function initTracing(): NodeSDK | null {
 
     sdk.start();
 
-    console.log(`[API-GATEWAY] OpenTelemetry tracing initialized`, { jaegerEndpoint: JAEGER_ENDPOINT });
-
-    process.on('SIGTERM', () => {
-        sdk?.shutdown()
-            .then(() => console.log('[API-GATEWAY] Tracing terminated'))
-            .catch((error) => console.error('[API-GATEWAY] Error terminating tracing', error))
-            .finally(() => process.exit(0));
-    });
+    logger.info(`[API-GATEWAY] OpenTelemetry tracing initialized`, { jaegerEndpoint: JAEGER_ENDPOINT });
 
     return sdk;
+}
+
+export async function shutdownTracing() {
+    if (sdk) {
+        try {
+            await sdk.shutdown();
+            logger.info('Tracing terminated');
+        } catch (error: any) {
+            logger.error('Error terminating tracing', { error: error.message });
+        }
+    }
 }

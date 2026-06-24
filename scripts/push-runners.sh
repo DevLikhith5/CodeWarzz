@@ -1,6 +1,6 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # Push runners to Docker Hub
-
+set -euo pipefail
 
 if [ -z "$DOCKER_USERNAME" ]; then
     echo "Error: DOCKER_USERNAME environment variable is not set."
@@ -10,33 +10,25 @@ fi
 
 echo "Building and Pushing runners for user: $DOCKER_USERNAME"
 
+# Indexed arrays for bash 3 (macOS) compatibility
+RUNNERS=( "cpp-runner" "python-runner" "node-runner" "java-runner" "go-runner" "rust-runner" )
+LANGS=( "cpp" "python" "javascript" "java" "go" "rust" )
 
-declare -A runners
-runners=( 
-    ["cpp"]="cpp-runner" 
-    ["python"]="python-runner" 
-    ["javascript"]="node-runner" 
-    ["java"]="java-runner" 
-    ["go"]="go-runner" 
-    ["rust"]="rust-runner" 
-)
-
-for lang in "${!runners[@]}"; do
-    name=${runners[$lang]}
+for i in "${!RUNNERS[@]}"; do
+    name="${RUNNERS[$i]}"
+    lang="${LANGS[$i]}"
     path="evaluation-service/src/docker/$lang"
     tag="$DOCKER_USERNAME/$name:latest"
-    
+
     echo "--- Processing $name ($lang) ---"
-    
 
     echo "Building $tag from $path..."
-    docker build -t $name $path
-    docker tag $name $tag
-    
+    docker build -t "$name" "$path"
+    docker tag "$name" "$tag"
 
     echo "Pushing $tag..."
-    docker push $tag
-    
+    docker push "$tag"
+
     echo "Done with $name"
     echo ""
 done

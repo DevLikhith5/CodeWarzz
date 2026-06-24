@@ -3,8 +3,8 @@ import logger from '../config/logger.config';
 import { QUEUES } from '../queues/rabbitmq/config';
 
 const RABBITMQ_MANAGEMENT_URL = process.env.RABBITMQ_MANAGEMENT_URL || 'http://rabbitmq:15672';
-const RABBITMQ_USER = process.env.RABBITMQ_USER || 'codewarz';
-const RABBITMQ_PASS = process.env.RABBITMQ_PASS || 'codewarz';
+const RABBITMQ_USER = process.env.RABBITMQ_USER;
+const RABBITMQ_PASS = process.env.RABBITMQ_PASS;
 
 const MONITORED_QUEUES = [
     QUEUES.SUBMISSION,
@@ -17,10 +17,16 @@ const MONITORED_QUEUES = [
 
 class QueueMonitorService {
     private isMonitoring = false;
+    private intervalHandle: NodeJS.Timeout | null = null;
 
     public startMonitoring() {
         if (this.isMonitoring) {
             logger.warn("Queue monitoring already started.");
+            return;
+        }
+
+        if (!RABBITMQ_USER || !RABBITMQ_PASS) {
+            logger.warn('RABBITMQ_USER / RABBITMQ_PASS not set; queue monitoring disabled');
             return;
         }
 
@@ -60,9 +66,17 @@ class QueueMonitorService {
         };
 
         updateMetrics();
-        setInterval(updateMetrics, 5000);
+        this.intervalHandle = setInterval(updateMetrics, 5000);
 
         this.isMonitoring = true;
+    }
+
+    public stopMonitoring() {
+        if (this.intervalHandle) {
+            clearInterval(this.intervalHandle);
+            this.intervalHandle = null;
+        }
+        this.isMonitoring = false;
     }
 }
 

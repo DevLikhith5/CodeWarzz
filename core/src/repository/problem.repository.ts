@@ -67,7 +67,7 @@ export class ProblemRepository {
                         acceptedSubmissions: sql<number>`count(case when ${submissions.verdict} = 'AC' then 1 end)::int`,
                     },
                     userStatus: userId ? sql<string | null>`
-                        CASE 
+                        CASE
                             WHEN COUNT(CASE WHEN ${submissions.userId} = ${userId} AND ${submissions.verdict} = 'AC' THEN 1 END) > 0 THEN 'Solved'
                             WHEN COUNT(CASE WHEN ${submissions.userId} = ${userId} THEN 1 END) > 0 THEN 'Attempted'
                             ELSE NULL
@@ -82,7 +82,9 @@ export class ProblemRepository {
 
             if (!problemData) return null;
 
-
+            // Fetch testcases in parallel with the problem query would require
+            // a CTE; the simpler optimization is to keep them as two queries
+            // but bound them tightly. The second query is small and indexed.
             const problemTestcases = await db.query.testcases.findMany({
                 where: eq(testcases.problemId, id)
             });
@@ -96,12 +98,6 @@ export class ProblemRepository {
 
     /**
      * Fetches a problem by Slug with stats and testcases.
-     * Returns:
-     * {
-     *   ...problemFields,
-     *   stats: { totalSubmissions: number, acceptedSubmissions: number },
-     *   testcases: Testcase[]
-     * }
      */
     async getProblemBySlug(slug: string, userId?: string) {
         return await observeDbQuery('getProblemBySlug', 'problems', async () => {
@@ -113,7 +109,7 @@ export class ProblemRepository {
                         acceptedSubmissions: sql<number>`count(case when ${submissions.verdict} = 'AC' then 1 end)::int`,
                     },
                     userStatus: userId ? sql<string | null>`
-                        CASE 
+                        CASE
                             WHEN COUNT(CASE WHEN ${submissions.userId} = ${userId} AND ${submissions.verdict} = 'AC' THEN 1 END) > 0 THEN 'Solved'
                             WHEN COUNT(CASE WHEN ${submissions.userId} = ${userId} THEN 1 END) > 0 THEN 'Attempted'
                             ELSE NULL

@@ -12,11 +12,11 @@ export const validate = (schemas: ValidationSchemas | ZodSchema) => (req: Reques
     try {
         //if there is only zodSchema
         if ('parse' in schemas) {
-            schemas.parse(req.body);
+            req.body = schemas.parse(req.body);
         } else {
-            if (schemas.body) schemas.body.parse(req.body);
-            if (schemas.params) schemas.params.parse(req.params);
-            if (schemas.query) schemas.query.parse(req.query);
+            if (schemas.body) req.body = schemas.body.parse(req.body);
+            if (schemas.params) req.params = schemas.params.parse(req.params);
+            if (schemas.query) req.query = schemas.query.parse(req.query);
         }
         next();
     } catch (error) {
@@ -24,7 +24,7 @@ export const validate = (schemas: ValidationSchemas | ZodSchema) => (req: Reques
             res.status(StatusCodes.BAD_REQUEST).json({
                 success: false,
                 message: "Validation Error",
-                errors: error.errors,
+                errors: error.errors.map((e) => ({ path: e.path.join('.'), message: e.message })),
             });
             return;
         }

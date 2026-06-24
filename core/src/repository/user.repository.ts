@@ -160,6 +160,52 @@ export class UserRepository {
         });
     }
 
+    /**
+     * Transactional variants — accept a Drizzle tx handle so callers can
+     * group the user update with other writes (e.g. submission update,
+     * event append) for atomicity.
+     */
+    async incrementUserActivityWithTx(tx: any, userId: string) {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        await tx.insert(userDailyActivity).values({
+            userId,
+            date: today,
+            submissions: 1
+        })
+            .onConflictDoUpdate({
+                target: [userDailyActivity.userId, userDailyActivity.date],
+                set: {
+                    submissions: sql`${userDailyActivity.submissions} + 1`,
+                    updatedAt: new Date()
+                }
+            });
+    }
+
+    async decrementUserActivityWithTx(tx: any, userId: string) {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        await tx
+            .update(userDailyActivity)
+            .set({
+                submissions: sql`GREATEST(${userDailyActivity.submissions} - 1, 0)`,
+                updatedAt: new Date()
+            })
+            .where(and(
+                eq(userDailyActivity.userId, userId),
+                eq(userDailyActivity.date, today)
+            ));
+    }
+
+    async incrementSolvedCountWithTx(tx: any, userId: string) {
+        await tx
+            .update(users)
+            .set({
+                solvedCount: sql`${users.solvedCount} + 1`
+            })
+            .where(eq(users.id, userId));
+    }
+
     async getLastAttemptedProblem(userId: string) {
         return await observeDbQuery('getLastAttemptedProblem', 'submissions', async () => {
             return await db.query.submissions.findFirst({
@@ -180,42 +226,53 @@ export class UserRepository {
     }
     async getGlobalLeaderboard(limit: number = 50) {
         return await observeDbQuery('getGlobalLeaderboard', 'users', async () => {
-            const results = await db
-                .select({
-                    id: users.id,
-                    username: users.username,
-                    solvedCount: users.solvedCount,
-                    // We can also fetch breakdowns if needed, but solvedCount is primary
-                })
-                .from(users)
-                .orderBy(desc(users.solvedCount))
-                .limit(limit);
+            // Compute the entire leaderboard in a single SQL query: per-user
+            // (EASY/MEDIUM/HARD) solved counts via FILTER + DISTINCT, then
+            // rank by total solved. Avoids the previous N+1 (1 + N queries
+            // for limit=50).
+            const results = await db.execute<{
+                id: string;
+                username: string;
+                solved_count: number;
+                easy: number;
+                medium: number;
+                hard: number;
+            }>(sql`
+                SELECT
+                    u.id,
+                    u.username,
+                    COUNT(DISTINCT CASE WHEN p.difficulty = 'EASY' THEN p.id END)::int AS easy,
+                    COUNT(DISTINCT CASE WHEN p.difficulty = 'MEDIUM' THEN p.id END)::int AS medium,
+                    COUNT(DISTINCT CASE WHEN p.difficulty = 'HARD' THEN p.id END)::int AS hard,
+                    COUNT(DISTINCT p.id)::int AS solved_count
+                FROM users u
+                LEFT JOIN submissions s
+                    ON s.user_id = u.id AND s.verdict = 'AC'
+                LEFT JOIN problems p
+                    ON p.id = s.problem_id
+                GROUP BY u.id, u.username
+                HAVING COUNT(DISTINCT p.id) > 0
+                ORDER BY solved_count DESC
+                LIMIT ${limit}
+            `);
 
-            // Fetch breakdown stats for each user
-            const leaderboardWithStats = await Promise.all(results.map(async (user) => {
-                const solvedCounts = await this.getSolvedCounts(user.id);
-                // Transform to easy/medium/hard map
-                const difficultyMap = { EASY: 0, MEDIUM: 0, HARD: 0 };
-                solvedCounts.forEach(s => {
-                    if (s.difficulty) {
-                        // @ts-ignore
-                        difficultyMap[s.difficulty] = s.count;
-                    }
-                });
+            const rows = (results.rows || results as any) as Array<{
+                id: string;
+                username: string;
+                solved_count: number;
+                easy: number;
+                medium: number;
+                hard: number;
+            }>;
 
-                const totalRealSolved = difficultyMap.EASY + difficultyMap.MEDIUM + difficultyMap.HARD;
-
-                return {
-                    ...user,
-                    solvedCount: totalRealSolved, // Override stale DB count with real calculated count
-                    easy: difficultyMap.EASY,
-                    medium: difficultyMap.MEDIUM,
-                    hard: difficultyMap.HARD
-                };
+            return rows.map((row) => ({
+                id: row.id,
+                username: row.username,
+                solvedCount: row.solved_count,
+                easy: row.easy,
+                medium: row.medium,
+                hard: row.hard,
             }));
-
-            // Sort by valid solved count to ensure ranking matches displayed score
-            return leaderboardWithStats.sort((a, b) => b.solvedCount - a.solvedCount);
         });
     }
 }

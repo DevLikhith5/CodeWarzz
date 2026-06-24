@@ -42,27 +42,35 @@ export interface RateLimitRule {
 }
 
 const DEFAULT_RULES: Record<string, RateLimitRule> = {
-    'POST:/api/v1/submissions': {
+    // Keys are the path *relative to the mount point* (e.g. /submissions,
+    // not /api/v1/submissions). The middleware strips the mount point
+    // from req.baseUrl + req.path before matching.
+    'POST:/submissions': {
         key: 'rl:submission',
         maxTokens: 10,
         refillRate: 10 / 60,
     },
-    'POST:/api/v1/submissions/run': {
+    'POST:/submissions/run': {
         key: 'rl:run',
         maxTokens: 30,
         refillRate: 30 / 60,
     },
-    'GET:/api/v1/problems': {
+    'GET:/problems': {
         key: 'rl:problems',
         maxTokens: 60,
         refillRate: 60 / 60,
     },
-    'POST:/api/v1/auth/login': {
+    'POST:/auth/login': {
         key: 'rl:login',
         maxTokens: 5,
         refillRate: 5 / 60,
     },
-    'GET:/api/v1/leaderboard': {
+    'POST:/auth/signin': {
+        key: 'rl:login',
+        maxTokens: 5,
+        refillRate: 5 / 60,
+    },
+    'GET:/leaderboard': {
         key: 'rl:leaderboard',
         maxTokens: 120,
         refillRate: 120 / 60,
@@ -87,26 +95,33 @@ async function checkRateLimit(identifier: string, rule: RateLimitRule): Promise<
     return result === 1;
 }
 
-function findRule(method: string, path: string): RateLimitRule | undefined {
-    const lookup = `${method}:${path}`;
+// Strip the mount point (/api/v1) so we can match against the un-mounted path
+// in DEFAULT_RULES. Mount point is configurable per deployment.
+const API_MOUNT_RE = /^\/api\/v\d+/;
+function stripMountPoint(fullPath: string): string {
+    return fullPath.replace(API_MOUNT_RE, '') || '/';
+}
 
-    if (DEFAULT_RULES[lookup]) {
-        return DEFAULT_RULES[lookup];
+function findRule(method: string, fullPath: string): RateLimitRule | undefined {
+    const path = stripMountPoint(fullPath);
+    const exact = method + path;
+    if (DEFAULT_RULES[exact]) {
+        return DEFAULT_RULES[exact];
     }
-
     for (const [pattern, rule] of Object.entries(DEFAULT_RULES)) {
-        if (lookup.startsWith(pattern.split(':')[0] + ':' + path.split('/').slice(0, 3).join('/'))) {
+        const [patternMethod, patternPath] = pattern.split(':');
+        if (patternMethod === method && path.startsWith(patternPath)) {
             return rule;
         }
     }
-
     return undefined;
 }
 
 export function distributedRateLimiter() {
     return async (req: Request, res: Response, next: NextFunction) => {
         const identifier = (req as any).user?.id || req.ip || 'anonymous';
-        const rule = findRule(req.method, req.path);
+        const fullPath = (req.baseUrl || '') + (req.path || '');
+        const rule = findRule(req.method, fullPath);
 
         if (!rule) {
             return next();
@@ -116,7 +131,7 @@ export function distributedRateLimiter() {
             const allowed = await checkRateLimit(identifier, rule);
 
             if (!allowed) {
-                logger.warn(`Rate limit exceeded for ${identifier} on ${req.method} ${req.path}`);
+                logger.warn(`Rate limit exceeded for ${identifier} on ${req.method} ${fullPath}`);
                 res.status(429).json({
                     success: false,
                     message: 'Rate limit exceeded. Please try again later.',

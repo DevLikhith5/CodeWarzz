@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import axios from "axios";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import CodeEditor from "@/features/problems/components/CodeEditor";
 import { Button } from "@/components/ui/button";
@@ -97,7 +98,6 @@ const Problem = () => {
     if (!problem?.id) return;
     try {
       setLoadingSubmissions(true);
-      setLoadingSubmissions(true);
       // Fetch submissions for this problem
       const res = await api.get(`/submissions?problemId=${problem.id || id}&limit=20`);
       setSubmissions(res.data.data || []);
@@ -116,6 +116,20 @@ const Problem = () => {
   }, [problem?.id]);
   const [isRunning, setIsRunning] = useState(false);
   const [selectedTestCase, setSelectedTestCase] = useState(0);
+  // Refs for intervals so we can clean them up on unmount or in finally blocks.
+  const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const cancelledRef = useRef<boolean>(false);
+
+  useEffect(() => {
+    return () => {
+      // Cleanup all in-flight polling intervals on unmount.
+      cancelledRef.current = true;
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current);
+        pollIntervalRef.current = null;
+      }
+    };
+  }, []);
 
   useEffect(() => {
     const fetchProblem = async () => {
@@ -272,6 +286,7 @@ const Problem = () => {
 
           if (statusData.status === 'completed' || statusData.status === 'failed') {
             clearInterval(pollInterval);
+            pollIntervalRef.current = null;
             setIsRunning(false);
 
             if (statusData.status === 'completed' && statusData.result) {
@@ -333,11 +348,14 @@ const Problem = () => {
             }
           }
         } catch (err) {
+          if (axios.isCancel(err)) return;
           console.error("Polling error:", err);
           clearInterval(pollInterval);
+          pollIntervalRef.current = null;
           setIsRunning(false);
         }
       }, 1000);
+      pollIntervalRef.current = pollInterval;
 
     } catch (err) {
       console.error("Run failed:", err);

@@ -8,26 +8,31 @@
  *                                  ~10x faster than scanning the sorted set
  *           getUserRank        → O(1) hash lookup from Read Model
  */
-import { RequestHandler } from 'express';
+import { NextFunction, Request, Response, RequestHandler } from 'express';
 import {
     updateLeaderboard,
     getUserRank,
 } from '../services/leaderboard.service';
 import { leaderboardReadModelService } from '../services/leaderboard.readmodel.service';
 import logger from '../config/logger.config';
+import { NotFoundError, BadRequestError } from '../utils/errors/app.error';
 
 export const leaderboardController = {
     // ── WRITE SIDE ──────────────────────────────────────────────────────────
-    upsertLeaderboard: (async (req, res) => {
+    upsertLeaderboard: (async (req: Request, res: Response, next: NextFunction) => {
         try {
             const { userId, contestId, score, timeTakenInMs } = req.body;
 
             if (!userId || !contestId || score === undefined || timeTakenInMs === undefined) {
-                res.status(400).json({ message: 'Missing fields' });
-                return;
+                return next(new BadRequestError('Missing required fields: userId, contestId, score, timeTakenInMs'));
             }
 
-            const result = await updateLeaderboard({ userId, contestId, score, timeTakenInMs });
+            const result = await updateLeaderboard({
+                userId,
+                contestId,
+                score: Number(score),
+                timeTakenInMs: Number(timeTakenInMs),
+            });
 
             // Async CQRS projection (non-blocking)
             leaderboardReadModelService.project(contestId).catch((err: any) =>
@@ -36,45 +41,40 @@ export const leaderboardController = {
 
             res.status(200).json({ message: 'Leaderboard updated', ...result });
         } catch (err) {
-            res.status(500).json({ message: 'Internal Server Error' });
+            next(err);
         }
     }) as RequestHandler,
 
     // ── READ SIDE (Read Model) ───────────────────────────────────────────────
-    getTopLeaderboard: (async (req, res) => {
+    getTopLeaderboard: (async (req: Request, res: Response, next: NextFunction) => {
         try {
             const { contestId } = req.params;
             const limit = Number(req.query.limit) || 50;
 
-            // Served from CQRS Read Model — no sorted-set range scan
             const entries = await leaderboardReadModelService.getTop(contestId, limit);
 
             res.json({ contestId, leaderboard: entries });
         } catch (err) {
-            res.status(500).json({ message: 'Internal server error' });
+            next(err);
         }
     }) as RequestHandler,
 
-    getUserRank: (async (req, res) => {
+    getUserRank: (async (req: Request, res: Response, next: NextFunction) => {
         try {
             const { contestId, userId } = req.params;
 
-            // O(1) hash lookup from Read Model
             const entry = await leaderboardReadModelService.getUserEntry(contestId, userId);
             if (entry) {
-                res.json(entry);
-                return;
+                return res.json(entry);
             }
 
-            // Fallback to write model (cold read model scenario)
             const result = await getUserRank(contestId, userId);
             if (!result) {
-                res.status(404).json({ message: 'User not ranked' });
-                return;
+                return next(new NotFoundError('User not ranked'));
             }
             res.json(result);
         } catch (err) {
-            res.status(500).json({ message: 'Internal server error' });
+            next(err);
         }
     }) as RequestHandler,
 };

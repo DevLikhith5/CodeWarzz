@@ -14,6 +14,7 @@ export class MetricsService {
     private submissionE2EDuration: client.Histogram;
     private queueDepth: client.Gauge;
     private appErrorsTotal: client.Counter;
+    private infraFailuresTotal: client.Counter;
     private authEventsTotal: client.Counter;
     private contestEventsTotal: client.Counter;
     private problemEventsTotal: client.Counter;
@@ -97,6 +98,12 @@ export class MetricsService {
             labelNames: ['type', 'code']
         });
 
+        this.infraFailuresTotal = new client.Counter({
+            name: 'infra_failures_total',
+            help: 'Side-effect infra calls that failed and were previously swallowed (circuit breaker sync, idempotency del, etc.)',
+            labelNames: ['operation', 'target']
+        });
+
         this.authEventsTotal = new client.Counter({
             name: 'auth_events_total',
             help: 'Total number of authentication events',
@@ -138,6 +145,7 @@ export class MetricsService {
         this.registry.registerMetric(this.submissionE2EDuration);
         this.registry.registerMetric(this.queueDepth);
         this.registry.registerMetric(this.appErrorsTotal);
+        this.registry.registerMetric(this.infraFailuresTotal);
         this.registry.registerMetric(this.authEventsTotal);
         this.registry.registerMetric(this.contestEventsTotal);
         this.registry.registerMetric(this.problemEventsTotal);
@@ -198,6 +206,10 @@ export class MetricsService {
 
     public getAppErrorsTotal(): client.Counter {
         return this.appErrorsTotal;
+    }
+
+    public getInfraFailuresTotal(): client.Counter {
+        return this.infraFailuresTotal;
     }
 
     public getAuthEventsTotal(): client.Counter {

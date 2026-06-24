@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from "express";
-import { redis } from "../config/redis.conifg";
+import { redis } from "../config/redis.config";
 import logger from "../config/logger.config";
 
 interface RateLimitConfig {
@@ -27,7 +27,7 @@ if data then
     local decoded = cjson.decode(data)
     currentTokens = decoded.tokens
     lastRefill = decoded.lastRefill
-    
+
     local elapsed = now - lastRefill
     if elapsed > 0 then
         local added = elapsed * refillRate
@@ -46,14 +46,28 @@ else
 end
 `;
 
+// Resolve the client IP. Prefer req.ip (which respects trust proxy settings
+// on the Express app). Only fall back to x-forwarded-for if no other IP is
+// available, and only take the leftmost entry.
+function resolveClientIp(req: Request): string {
+    if (req.ip) return req.ip;
+    const xff = req.headers["x-forwarded-for"];
+    if (typeof xff === "string" && xff.length > 0) {
+        return xff.split(",")[0].trim();
+    }
+    if (Array.isArray(xff) && xff.length > 0) {
+        return xff[0].split(",")[0].trim();
+    }
+    return req.socket.remoteAddress || "unknown";
+}
+
 export const rateLimiter = (config: RateLimitConfig = DEFAULT_CONFIG) => {
     return async (req: Request, res: Response, next: NextFunction) => {
-        const ip = req.ip || req.headers["x-forwarded-for"] || req.socket.remoteAddress;
+        const ip = resolveClientIp(req);
         const key = `ratelimit:${ip}`;
 
         try {
             const now = Math.floor(Date.now() / 1000);
-
 
             // Skip rate limiting in test environment
             if (process.env.NODE_ENV === 'test') return next();

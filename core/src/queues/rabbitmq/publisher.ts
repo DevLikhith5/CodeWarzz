@@ -34,10 +34,21 @@ export async function publishToExchange(
     });
 
     if (!published) {
-        logger.warn('RabbitMQ publish buffer full', { exchange, routingKey });
+        logger.warn('RabbitMQ publish buffer full, waiting for drain', { exchange, routingKey });
         await new Promise<void>((resolve) => {
             channel.once('drain', resolve);
         });
+    }
+
+    // Wait for broker confirm — this is what makes the publish durable.
+    // Without this, a network blip between client and broker can cause silent
+    // message loss, and the outbox processor would mark a message PUBLISHED
+    // before the broker has actually received it.
+    try {
+        await channel.waitForConfirms();
+    } catch (err: any) {
+        logger.error('RabbitMQ publish confirm failed', { exchange, routingKey, error: err.message });
+        throw err;
     }
 
     logger.debug(`Published to ${exchange} [${routingKey}]`, { correlationId: options.correlationId });

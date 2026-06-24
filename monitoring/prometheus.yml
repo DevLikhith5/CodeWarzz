@@ -21,3 +21,8 @@ scrape_configs:
     metrics_path: '/metrics'
     static_configs:
       - targets: ['evaluation-service:3003']
+
+  - job_name: 'evaluation-service-go'
+    metrics_path: '/metrics'
+    static_configs:
+      - targets: ['evaluation-service-go:3004']

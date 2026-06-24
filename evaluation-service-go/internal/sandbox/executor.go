@@ -15,7 +15,7 @@ func Compile(ws *Workspace, lang LanguageConfig, hostWorkspacesRoot string) erro
 
 	volumePath := resolveVolumePath(ws.Dir, hostWorkspacesRoot)
 
-	cmd := fmt.Sprintf("docker run --rm -v %s:/app -w /app %s %s",
+	cmd := fmt.Sprintf("docker run --rm --network none --security-opt seccomp=default --security-opt no-new-privileges:true --read-only --tmpfs /tmp:size=64m -v %s:/app -w /app %s %s",
 		volumePath, lang.Image, lang.CompileCommand)
 
 	logger.Debug("Compiling code", "command", cmd)
@@ -34,7 +34,7 @@ func Execute(ws *Workspace, lang LanguageConfig, timeLimitMs, memoryLimitMb int,
 	timeLimitSec := (timeLimitMs / 1000) + 2
 	volumePath := resolveVolumePath(ws.Dir, hostWorkspacesRoot)
 
-	cmd := fmt.Sprintf("docker run --rm --network none --memory %dm --cpus %.1f --pids-limit 64 -v %s:/app -w /app %s sh -c \"timeout %d %s < input.txt\"",
+	cmd := fmt.Sprintf("docker run --rm --network none --memory %dm --cpus %.1f --pids-limit 64 --security-opt seccomp=default --security-opt no-new-privileges:true --read-only --tmpfs /tmp:size=64m -v %s:/app -w /app %s sh -c \"timeout %d %s < input.txt\"",
 		memoryLimitMb, cpuLimit, volumePath, lang.Image, timeLimitSec, lang.RunCommand)
 
 	logger.Debug("Executing code", "command", cmd)

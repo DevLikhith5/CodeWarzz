@@ -84,7 +84,6 @@ export class ContestRepository {
 
     async addProblemToContest(contestId: string, problemId: string) {
         return await observeDbQuery('addProblemToContest', 'contestProblems', async () => {
-            console.log("INSIDE CONTEST REPOSITORY LAYER: ", contestId, problemId)
             await db.insert(contestProblems).values({ contestId, problemId });
             await cacheService.del(`contest:problems:${contestId}`);
             await cacheService.del(`contest:ongoing:problem:${problemId}`);

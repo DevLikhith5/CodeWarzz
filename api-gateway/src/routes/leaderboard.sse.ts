@@ -1,5 +1,5 @@
 import { Request, Response, Router } from "express";
-import { redis } from "../config/redis.conifg";
+import { redis } from "../config/redis.config";
 import logger from "../config/logger.config";
 import EventEmitter from "events";
 
@@ -47,10 +47,6 @@ sseRouter.get("/:contestId", (req: Request, res: Response) => {
 
     // 4. Listener for leaderboard updates
     const updateListener = () => {
-        // We send an UPDATE event. The client can then either:
-        // A) Consume this event and fetch the latest JSON via standard REST (which hits the L1 cache!)
-        // B) We could fetch it here and push the full JSON. 
-        // We'll tell the client to refresh, which hits our perfectly optimized Singleflight L1 Cache.
         res.write(`data: {"type": "UPDATE", "timestamp": ${Date.now()}}\n\n`);
     };
 
@@ -63,3 +59,10 @@ sseRouter.get("/:contestId", (req: Request, res: Response) => {
         sseEmitter.off(eventName, updateListener);
     });
 });
+
+export function shutdownSse() {
+    if (subscriber && subscriber.status === 'ready') {
+        subscriber.quit().catch(() => undefined);
+    }
+    sseEmitter.removeAllListeners();
+}

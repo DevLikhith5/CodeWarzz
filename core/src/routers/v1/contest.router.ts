@@ -30,6 +30,6 @@ contestRouter.get("/:id", extractUser, validate({ params: contestIdSchema }), ge
 contestRouter.post("/:id/register", verifyToken, validate(registerContestSchema), registerForContest);
 contestRouter.post("/:id/deregister", verifyToken, validate(registerContestSchema), deregisterForContest);
 contestRouter.get("/:id/problems", verifyToken, validate({ params: contestIdSchema }), getContestProblems);
-contestRouter.get("/:id/leaderboard", validate({ params: contestIdSchema }), getContestLeaderboard);
+contestRouter.get("/:id/leaderboard", extractUser, validate({ params: contestIdSchema }), getContestLeaderboard);
 
 export default contestRouter;

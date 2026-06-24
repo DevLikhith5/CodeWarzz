@@ -1,20 +1,26 @@
 package logger
 
 import (
+	"fmt"
+
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
 
 var Log *zap.SugaredLogger
 
-func Init() {
+func Init() error {
 	config := zap.NewProductionConfig()
 	config.Level = zap.NewAtomicLevelAt(zapcore.InfoLevel)
 	config.EncoderConfig.TimeKey = "timestamp"
 	config.EncoderConfig.EncodeTime = zapcore.ISO8601TimeEncoder
 
-	logger, _ := config.Build()
+	logger, err := config.Build()
+	if err != nil {
+		return fmt.Errorf("failed to build logger: %w", err)
+	}
 	Log = logger.Sugar()
+	return nil
 }
 
 func Info(msg string, keysAndValues ...interface{}) {

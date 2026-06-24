@@ -6,7 +6,7 @@ services:
     image: postgres:16-alpine
     container_name: codewarz-postgres
     ports:
-      - "5432:5432"
+      - "5435:5432"
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
@@ -65,9 +65,9 @@ services:
       - DB_PASSWORD=${POSTGRES_PASSWORD:-postgres}
       - DB_NAME=${POSTGRES_DB:-codewarz}
       - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/codewarz
-      - LOKI_URL=http://codewarz-loki:3100
-      - JAEGER_URL=http://codewarz-jaeger:14268
-      - RABBITMQ_MANAGEMENT_URL=http://codewarz-rabbitmq:15672
+      - LOKI_URL=http://loki:3100
+      - JAEGER_URL=http://jaeger:14268
+      - RABBITMQ_MANAGEMENT_URL=http://rabbitmq:15672
       - GOOGLE_REDIRECT_URI=https://codewarz.contactlikhith.me/api/v1/auth/google/callback
       - FRONTEND_URL=https://codewarz.contactlikhith.me
       - PLAGIARISM_THRESHOLD=0.80
@@ -87,6 +87,7 @@ services:
     build:
       context: ./evaluation-service-go
       dockerfile: Dockerfile
+    container_name: codewarz-evaluation-service-go
     deploy:
       mode: replicated
       replicas: 2
@@ -94,12 +95,10 @@ services:
       - SERVICE_NAME=evaluation-service-go
       - PORT=3004
       - RABBITMQ_URL=amqp://codewarz:codewarz@rabbitmq:5672
-      # Legacy HTTP kept for health checks only
       - CORE_SERVICE_URL=http://core:3001
-      # gRPC addresses — replaces REST inter-service calls
       - CORE_GRPC_ADDR=core:50051
       - LEADERBOARD_GRPC_ADDR=leaderboard-service:50052
-      - INTERNAL_API_KEY=${INTERNAL_API_KEY:-INTERNAL_KEY}
+      - INTERNAL_API_KEY=${INTERNAL_API_KEY:?INTERNAL_API_KEY must be set}
       - HOST_WORKSPACES_ROOT=/Users/cvlikhith/CodeWarz/temp_workspaces
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
@@ -128,8 +127,9 @@ services:
       - REDIS_URL=redis://redis:6379
       - RABBITMQ_URL=amqp://codewarz:codewarz@rabbitmq:5672
       - CORE_SERVICE_URL=http://core:3001
-      - LOKI_URL=http://codewarz-loki:3100
-      - JAEGER_URL=http://codewarz-jaeger:14268
+      - LOKI_URL=http://loki:3100
+      - JAEGER_URL=http://jaeger:14268
+      - INTERNAL_API_KEY=${INTERNAL_API_KEY:?INTERNAL_API_KEY must be set}
       - HOST_WORKSPACES_ROOT=/Users/cvlikhith/CodeWarz/temp_workspaces
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
@@ -154,8 +154,8 @@ services:
       - PORT=3002
       - REDIS_URL=redis://redis:6379
       - RABBITMQ_URL=amqp://codewarz:codewarz@rabbitmq:5672
-      - LOKI_URL=http://codewarz-loki:3100
-      - JAEGER_URL=http://codewarz-jaeger:14268
+      - LOKI_URL=http://loki:3100
+      - JAEGER_URL=http://jaeger:14268
       # gRPC server (LeaderboardService — CQRS write + read)
       - LEADERBOARD_GRPC_PORT=50052
     depends_on:
@@ -207,12 +207,14 @@ services:
       - CORE_SERVICE_URL=http://core:3001
       - EVALUATION_SERVICE_URL=http://evaluation-service:3003
       - LEADERBOARD_SERVICE_URL=http://leaderboard-service:3002
-      - LOKI_URL=http://codewarz-loki:3100
-      - JAEGER_URL=http://codewarz-jaeger:14268
+      - LOKI_URL=http://loki:3100
+      - JAEGER_URL=http://jaeger:14268
     depends_on:
       - core
       - evaluation-service
       - leaderboard-service
+      - redis
+      - rabbitmq
     networks:
       - codewarz-network
 
@@ -268,6 +270,8 @@ services:
     ports:
       - "3100:3100"
     command: -config.file=/etc/loki/local-config.yaml
+    volumes:
+      - loki_data:/loki
     networks:
       - codewarz-network
 
@@ -291,6 +295,7 @@ volumes:
   rabbitmq-data:
   prometheus_data:
   grafana_data:
+  loki_data:
 
 networks:
   codewarz-network:

@@ -41,13 +41,20 @@ export const getSubmissionController = async (req: Request, res: Response, next:
 export const getSubmissionsController = async (req: Request, res: Response, next: NextFunction) => {
     try {
         const userId = req.user?.id;
-        const { problemId, contestId, limit, offset } = req.query;
+        // The DTO validates and transforms limit/offset to numbers.
+        // (req.query as any) is intentional — Zod's middleware ensures the shape.
+        const { problemId, contestId, limit, offset } = req.query as {
+            problemId?: string;
+            contestId?: string;
+            limit?: number;
+            offset?: number;
+        };
 
         const submissions = await submissionService.getSubmissions({
             userId,
-            problemId: problemId as string,
-            contestId: contestId as string
-        }, limit ? parseInt(limit as string) : 20, offset ? parseInt(offset as string) : 0);
+            problemId,
+            contestId,
+        }, typeof limit === 'number' ? limit : 20, typeof offset === 'number' ? offset : 0);
 
         successResponse(res, submissions);
     } catch (error) {

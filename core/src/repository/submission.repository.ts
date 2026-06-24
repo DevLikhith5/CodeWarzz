@@ -14,6 +14,15 @@ export class SubmissionRepository {
         });
     }
 
+    /**
+     * Transactional variant: accepts a Drizzle transaction handle so the
+     * caller can group the submission insert with the outbox insert.
+     */
+    async createSubmissionWithTx(tx: any, submissionData: SubmissionInsert) {
+        const [submission] = await tx.insert(submissions).values(submissionData).returning();
+        return submission;
+    }
+
     async getSubmissionById(id: string) {
         return await observeDbQuery('getSubmissionById', 'submissions', async () => {
             return await db.query.submissions.findFirst({
@@ -27,6 +36,12 @@ export class SubmissionRepository {
                     }
                 }
             });
+        });
+    }
+
+    async getSubmissionByIdWithTx(tx: any, id: string) {
+        return await tx.query.submissions.findFirst({
+            where: eq(submissions.id, id),
         });
     }
 
@@ -48,14 +63,28 @@ export class SubmissionRepository {
                     eq(submissions.verdict, 'AC')
                 ),
                 orderBy: [
-                    // Primary sort: Lowest time
-                    // Secondary sort: Lowest memory
-                    // Tertiary sort: Newest (break ties with latest optimal)
+                    // Primary sort: Earliest AC submission (for the first solve).
+                    // For "best" we want the first AC, not the latest.
+                    asc(submissions.createdAt),
                     asc(submissions.timeTakenMs),
                     asc(submissions.memoryUsedMb),
-                    desc(submissions.createdAt)
                 ]
             });
+        });
+    }
+
+    async getBestSubmissionWithTx(tx: any, userId: string, problemId: string) {
+        return await tx.query.submissions.findFirst({
+            where: and(
+                eq(submissions.userId, userId),
+                eq(submissions.problemId, problemId),
+                eq(submissions.verdict, 'AC')
+            ),
+            orderBy: [
+                asc(submissions.createdAt),
+                asc(submissions.timeTakenMs),
+                asc(submissions.memoryUsedMb),
+            ]
         });
     }
 
@@ -92,6 +121,15 @@ export class SubmissionRepository {
                 .returning();
             return submission;
         });
+    }
+
+    async updateSubmissionWithTx(tx: any, id: string, data: Partial<SubmissionInsert>) {
+        const [submission] = await tx
+            .update(submissions)
+            .set(data)
+            .where(eq(submissions.id, id))
+            .returning();
+        return submission;
     }
 
     async getUserSolvedProblemIds(contestId: string, userId: string) {

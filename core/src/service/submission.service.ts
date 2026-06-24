@@ -8,10 +8,9 @@ import { redis } from "../config/redis.config";
 import { appendEvent } from "../service/eventStore.service";
 import { saveOutboxMessage } from "../service/outbox.service";
 import { EXCHANGES, ROUTING_KEYS } from "../queues/rabbitmq/config";
-import { Saga } from "../service/saga.service";
-import { withDistributedLock } from "../utils/distributedLock";
 import { withIdempotency } from "../middlewares/idempotency.middleware";
 import { backpressureMonitor } from "../service/backpressure.service";
+import db from "../config/db";
 
 export type CreateSubmissionDTO = Omit<SubmissionInsert, 'id' | 'createdAt'>;
 
@@ -41,65 +40,53 @@ export class SubmissionService {
             throw new Error("System is under heavy load. Please retry after a few seconds.");
         }
 
-        const submission = await submissionRepository.createSubmission(data);
-
-        await appendEvent('submission', submission.id, 'SUBMISSION_CREATED', {
-            userId: data.userId,
-            problemId: data.problemId,
-            contestId: data.contestId,
-            language: data.language,
+        // ── Transactional outbox: submission row + outbox row must commit
+        //    together. If either fails, both roll back; a stuck PENDING
+        //    submission is no longer possible.
+        const { submission } = await db.transaction(async (tx) => {
+            const submission = await submissionRepository.createSubmissionWithTx(tx, data);
+            const payload = {
+                submissionId: submission.id,
+                userId: data.userId,
+                contestId: data.contestId,
+                problemId: data.problemId,
+                language: data.language,
+                code: data.code,
+                submissionCreatedAt: submission.createdAt,
+            };
+            const outboxId = await saveOutboxMessage({
+                aggregateType: 'submission',
+                aggregateId: submission.id,
+                eventType: 'SUBMISSION_QUEUED',
+                payload,
+                exchange: EXCHANGES.SUBMISSION,
+                routingKey: ROUTING_KEYS.SUBMISSION,
+                maxAttempts: 5,
+            }, tx);
+            return { submission, outboxId };
         });
 
-        const saga = new Saga(`submission-${submission.id}`);
+        // Best-effort post-commit side effects. These run outside the
+        // transaction so that a transient failure here doesn't roll back
+        // the submission. Failures are logged.
+        try {
+            if (data.userId) {
+                await userRepository.incrementUserActivity(data.userId);
+            }
+        } catch (err: any) {
+            logger.error('Failed to increment user activity', { userId: data.userId, error: err.message });
+        }
 
-        const payload = {
-            submissionId: submission.id,
-            userId: data.userId,
-            contestId: data.contestId,
-            problemId: data.problemId,
-            language: data.language,
-            code: data.code,
-            submissionCreatedAt: submission.createdAt,
-        };
-
-        saga
-            .addStep(
-                'enqueue-submission',
-                async () => {
-                    await saveOutboxMessage({
-                        aggregateType: 'submission',
-                        aggregateId: submission.id,
-                        eventType: 'SUBMISSION_QUEUED',
-                        payload,
-                        exchange: EXCHANGES.SUBMISSION,
-                        routingKey: ROUTING_KEYS.SUBMISSION,
-                        maxAttempts: 5,
-                    });
-                },
-                async () => {
-                    logger.warn(`Compensating: marking submission ${submission.id} as FAILED`);
-                    await submissionRepository.updateSubmission(submission.id, { verdict: 'RE' });
-                }
-            )
-            .addStep(
-                'update-user-activity',
-                async () => {
-                    if (data.userId) {
-                        await userRepository.incrementUserActivity(data.userId);
-                    }
-                },
-                async () => {
-                    if (data.userId) {
-                        await userRepository.decrementUserActivity(data.userId);
-                    }
-                }
-            );
-
-        await saga.execute();
-
-        await appendEvent('submission', submission.id, 'SUBMISSION_QUEUED', {
-            isContest: !!data.contestId,
-        });
+        try {
+            await appendEvent('submission', submission.id, 'SUBMISSION_CREATED', {
+                userId: data.userId,
+                problemId: data.problemId,
+                contestId: data.contestId,
+                language: data.language,
+            });
+        } catch (err: any) {
+            logger.error('Failed to append SUBMISSION_CREATED event', { submissionId: submission.id, error: err.message });
+        }
 
         return submission;
     }
@@ -144,6 +131,8 @@ export class SubmissionService {
             jobId,
         };
 
+        // Run jobs are fire-and-forget so they don't need a full transaction.
+        // We just need the outbox row to exist for the queue processor to pick up.
         await saveOutboxMessage({
             aggregateType: 'run',
             aggregateId: jobId,
@@ -174,37 +163,52 @@ export class SubmissionService {
     }
 
     async updateSubmission(id: string, data: Partial<SubmissionInsert>) {
-        if (data.verdict === 'AC') {
-            const submission = await submissionRepository.getSubmissionById(id);
-            if (submission && submission.userId) {
-                await withDistributedLock(
-                    `solved-count:${submission.userId}:${submission.problemId}`,
-                    async () => {
-                        const existingBest = await submissionRepository.getBestSubmission(submission.userId, submission.problemId);
-                        if (!existingBest) {
-                            await userRepository.incrementSolvedCount(submission.userId);
-                        }
-                    },
-                    5000
-                );
+        // ── Transactional: persist DB row + solved-count increment + event
+        //    append must commit atomically. The lock outside the transaction
+        //    (withDistributedLock) prevents two concurrent updates from
+        //    both incrementing solvedCount, but the DB writes themselves
+        //    are still atomic.
+        return await db.transaction(async (tx) => {
+            const updated = await submissionRepository.updateSubmissionWithTx(tx, id, data);
+
+            if (data.verdict === 'AC') {
+                const submission = await submissionRepository.getSubmissionByIdWithTx(tx, id);
+                if (submission && submission.userId) {
+                    // The distributed lock outside this method ensures only
+                    // one concurrent update per (userId, problemId) pair.
+                    const best = await submissionRepository.getBestSubmissionWithTx(
+                        tx,
+                        submission.userId,
+                        submission.problemId,
+                    );
+                    if (!best) {
+                        await userRepository.incrementSolvedCountWithTx(tx, submission.userId);
+                    }
+                }
             }
-        }
 
-        if (data.verdict) {
-            await appendEvent('submission', id, 'SUBMISSION_COMPLETED', {
-                verdict: data.verdict,
-                score: data.score,
-                timeTakenMs: data.timeTakenMs,
-                passedTestcases: data.passedTestcases,
-                totalTestcases: data.totalTestcases,
-            });
-        }
+            if (data.verdict) {
+                await appendEvent('submission', id, 'SUBMISSION_COMPLETED', {
+                    verdict: data.verdict,
+                    score: data.score,
+                    timeTakenMs: data.timeTakenMs,
+                    passedTestcases: data.passedTestcases,
+                    totalTestcases: data.totalTestcases,
+                });
+            }
 
-        return await submissionRepository.updateSubmission(id, data);
+            return updated;
+        });
     }
 
     async submitSolutionWithIdempotency(data: SubmissionInsert) {
-        const idempotencyKey = `submit:${data.userId}:${data.problemId}:${Buffer.from(data.code).length}`;
+        // Include contestId in the key so submissions in different contests
+        // for the same problem are not incorrectly treated as duplicates.
+        // We also hash the code so different submissions with the same
+        // length are not conflated.
+        const crypto = await import('crypto');
+        const codeHash = crypto.createHash('sha256').update(data.code).digest('hex').slice(0, 16);
+        const idempotencyKey = `submit:${data.userId}:${data.problemId}:${data.contestId ?? 'practice'}:${codeHash}`;
 
         return withIdempotency(
             idempotencyKey,

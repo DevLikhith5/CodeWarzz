@@ -72,7 +72,9 @@ export class CircuitBreaker {
             this.state = 'OPEN';
             // Broadcast state change to the cluster
             if (redis) {
-                redis.publish('circuit-breaker:sync', JSON.stringify({ name: this.name, state: 'OPEN' })).catch(() => {});
+                redis
+                    .publish('circuit-breaker:sync', JSON.stringify({ name: this.name, state: 'OPEN' }))
+                    .catch((err) => reportSyncFailure(this.name, 'OPEN', err));
             }
         }
     }
@@ -96,7 +98,9 @@ export class CircuitBreaker {
         this.successCount = 0;
         this.lastFailureTime = null;
         if (redis) {
-            redis.publish('circuit-breaker:sync', JSON.stringify({ name: this.name, state: 'CLOSED' })).catch(() => {});
+            redis
+                .publish('circuit-breaker:sync', JSON.stringify({ name: this.name, state: 'CLOSED' }))
+                .catch((err) => reportSyncFailure(this.name, 'CLOSED', err));
         }
     }
 
@@ -114,15 +118,34 @@ export const circuitBreakerRegistry = new Map<string, CircuitBreaker>();
 
 import { redis } from '../../config/redis.config';
 import logger from '../../config/logger.config';
+import { metricsService } from '../../service/metrics.service';
+
+function reportSyncFailure(name: string, state: CircuitState, err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    logger.error('Failed to sync circuit breaker state to Redis', {
+        name,
+        state,
+        error: message,
+    });
+    try {
+        metricsService.getInfraFailuresTotal().inc({
+            operation: 'circuit_breaker_sync',
+            target: name,
+        });
+    } catch {
+        // metrics unavailable
+    }
+}
 
 // ── Distributed State Synchronization ──
 let subscriberInitialized = false;
+let subscriber: ReturnType<typeof redis.duplicate> | null = null;
 
 function initDistributedSync() {
     if (subscriberInitialized || !redis) return;
     subscriberInitialized = true;
-    
-    const subscriber = redis.duplicate();
+
+    subscriber = redis.duplicate();
     subscriber.subscribe('circuit-breaker:sync', (err) => {
         if (err) logger.error("Failed to subscribe to distributed circuit breaker sync");
     });
@@ -141,6 +164,17 @@ function initDistributedSync() {
             }
         }
     });
+}
+
+export async function shutdownCircuitBreakers() {
+    if (subscriber) {
+        try {
+            await subscriber.quit();
+        } catch {
+            // best-effort
+        }
+        subscriber = null;
+    }
 }
 
 export function getCircuitBreaker(name: string, options?: Partial<CircuitBreakerOptions>): CircuitBreaker {

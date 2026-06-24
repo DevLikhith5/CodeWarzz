@@ -3,13 +3,27 @@ import { contestRepository, ContestInsert } from "../repository/contest.reposito
 import { problemRepository } from "../repository/problem.repository";
 import { submissionRepository } from "../repository/submission.repository";
 import { generateSlug } from "../utils/slug.utils";
+import { addContestToBloomFilter } from "./bloom.service";
+import logger from "../config/logger.config";
+import db from "../config/db";
+import { sql } from "drizzle-orm";
+import { submissions } from "../db/schema/submission";
+import { problems } from "../db/schema/problems";
+import { users } from "../db/schema/user";
 
 export class ContestService {
     async createContest(data: ContestInsert) {
         if (!data.slug) {
             data.slug = generateSlug(data.title);
         }
-        return await contestRepository.createContest(data);
+        const contest = await contestRepository.createContest(data);
+        // Add to bloom filter so the gateway doesn't shed traffic to this new
+        // contest as "non-existent". A failure here is logged but does not
+        // fail the request (the gateway will fall back to a DB lookup).
+        addContestToBloomFilter(contest.id).catch((err: any) =>
+            logger.error('Failed to add contest to bloom filter', { contestId: contest.id, error: err.message })
+        );
+        return contest;
     }
 
     async getContest(id: string, userId?: string) {
@@ -135,93 +149,96 @@ export class ContestService {
         const contest = await contestRepository.getContestById(contestId);
         if (!contest) throw new Error("Contest not found");
 
-        const submissions = await contestRepository.getContestSubmissionsForLeaderboard(contestId);
-        const problems = await contestRepository.getContestProblems(contestId);
+        const contestProblems = await contestRepository.getContestProblems(contestId);
 
-        // Map problems for easy lookup and ordering
-        const problemMap = new Map(problems.map(p => [p.id, p]));
+        // Compute the leaderboard entirely in SQL with a single query.
+        //
+        // For each (user, problem) pair, pick the FIRST AC submission (the
+        // "solved" event). Count all wrong attempts made before that AC.
+        // Score = sum of maxScore for solved problems. Total time =
+        // submission time (from contest start) + (wrong attempts × 10min).
+        const startTime = new Date(contest.startTime);
+        const PENALTY_MS = 10 * 60 * 1000;
 
-
-        const userStats = new Map<string, {
-            userId: string;
+        const leaderboardRows = await db.execute<{
+            user_id: string;
             username: string;
             score: number;
-            totalTimeMs: number;
-            problemStats: Record<string, { solved: boolean; attempts: number; timeMs: number }>;
-        }>();
+            total_time_ms: number;
+            solved_count: number;
+        }>(sql`
+            WITH first_ac AS (
+                SELECT
+                    s.user_id,
+                    s.problem_id,
+                    MIN(s.created_at) AS ac_time
+                FROM ${submissions} s
+                WHERE s.contest_id = ${contestId}
+                  AND s.verdict = 'AC'
+                GROUP BY s.user_id, s.problem_id
+            ),
+            wrong_attempts AS (
+                SELECT
+                    s.user_id,
+                    s.problem_id,
+                    COUNT(*) AS attempts
+                FROM ${submissions} s
+                LEFT JOIN first_ac fa
+                    ON s.user_id = fa.user_id
+                    AND s.problem_id = fa.problem_id
+                WHERE s.contest_id = ${contestId}
+                  AND s.verdict <> 'AC'
+                  AND (fa.ac_time IS NULL OR s.created_at < fa.ac_time)
+                GROUP BY s.user_id, s.problem_id
+            ),
+            solved_with_score AS (
+                SELECT
+                    fa.user_id,
+                    fa.problem_id,
+                    fa.ac_time,
+                    COALESCE(p.max_score, 100) AS max_score,
+                    COALESCE(wa.attempts, 0) AS wrong_count,
+                    EXTRACT(EPOCH FROM (fa.ac_time - ${startTime}::timestamp)) * 1000 AS time_ms
+                FROM first_ac fa
+                JOIN ${problems} p ON p.id = fa.problem_id
+                LEFT JOIN wrong_attempts wa
+                    ON fa.user_id = wa.user_id
+                    AND fa.problem_id = wa.problem_id
+            )
+            SELECT
+                u.id AS user_id,
+                u.username,
+                COALESCE(SUM(sws.max_score), 0)::int AS score,
+                (COALESCE(SUM(sws.time_ms), 0)
+                 + COALESCE(SUM(sws.wrong_count), 0) * ${PENALTY_MS})::bigint AS total_time_ms,
+                COUNT(sws.problem_id)::int AS solved_count
+            FROM ${users} u
+            LEFT JOIN solved_with_score sws ON sws.user_id = u.id
+            GROUP BY u.id, u.username
+            ORDER BY score DESC, total_time_ms ASC
+        `);
 
-        for (const submission of submissions) {
-            if (!userStats.has(submission.userId)) {
-                userStats.set(submission.userId, {
-                    userId: submission.userId,
-                    username: submission.user.username,
-                    score: 0,
-                    totalTimeMs: 0,
-                    problemStats: {}
-                });
-            }
-
-            const stats = userStats.get(submission.userId)!;
-            const problemId = submission.problemId;
-
-            // Initialize problem stat if not exists
-            if (!stats.problemStats[problemId]) {
-                stats.problemStats[problemId] = { solved: false, attempts: 0, timeMs: 0 };
-            }
-
-            const pStat = stats.problemStats[problemId];
-
-            if (pStat.solved) continue; // Already solved, ignore further submissions
-
-            if (submission.verdict === 'AC') {
-                pStat.solved = true;
-                pStat.attempts += 1;
-
-                // Calculate time taken from contest start
-                const submissionTime = new Date(submission.createdAt).getTime();
-                const startTime = new Date(contest.startTime).getTime();
-                const timeTaken = Math.max(0, submissionTime - startTime);
-                pStat.timeMs = timeTaken;
-
-                // Update total stats
-                const problem = problemMap.get(problemId);
-                if (problem) {
-                    stats.score += (problem as any).maxScore || 100; // Default 100 if maxScore missing
-                }
-                stats.totalTimeMs += timeTaken;
-
-                // Add penalty for wrong attempts (e.g. AC on 3rd try = 2 wrong attempts)
-                // Assuming 10 minutes (600000ms) penalty per wrong attempt
-                // pStat.attempts includes the successful one, so wrong attempts = attempts - 1
-                stats.totalTimeMs += (pStat.attempts - 1) * 600000;
-
-            } else {
-                pStat.attempts += 1;
-            }
-        }
-
-        const leaderboard = Array.from(userStats.values()).sort((a, b) => {
-            if (b.score !== a.score) return b.score - a.score; // Higher score first
-            return a.totalTimeMs - b.totalTimeMs; // Lower time first
+        const leaderboardWithRank = (leaderboardRows.rows || leaderboardRows as any).map((row: any, index: number) => {
+            const totalMs = Number(row.total_time_ms) || 0;
+            const seconds = Math.floor(totalMs / 1000);
+            const h = Math.floor(seconds / 3600);
+            const m = Math.floor((seconds % 3600) / 60);
+            const s = seconds % 60;
+            return {
+                rank: index + 1,
+                userId: row.user_id,
+                username: row.username,
+                score: row.score,
+                totalTimeMs: totalMs,
+                solvedCount: row.solved_count,
+                timeFormatted: `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`,
+            };
         });
-
-        // Add rank
-        const leaderboardWithRank = leaderboard.map((entry, index) => ({
-            rank: index + 1,
-            ...entry,
-            timeFormatted: (() => {
-                const seconds = Math.floor(entry.totalTimeMs / 1000);
-                const h = Math.floor(seconds / 3600);
-                const m = Math.floor((seconds % 3600) / 60);
-                const s = seconds % 60;
-                return `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
-            })()
-        }));
 
         return {
             contestId,
-            problems: problems.map(p => ({ id: p.id, title: p.title })),
-            leaderboard: leaderboardWithRank
+            problems: contestProblems.map(p => ({ id: p.id, title: p.title })),
+            leaderboard: leaderboardWithRank,
         };
     }
 }

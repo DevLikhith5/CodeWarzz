@@ -1,4 +1,4 @@
-import { execSync } from "child_process";
+import { execFileSync } from "child_process";
 import path from "path";
 import { Workspace } from "./workspace";
 import { LanguageConfig } from "./languageConfig";
@@ -25,14 +25,24 @@ export function compile(
 
   logger.debug(`[COMPILER] Compiling code for ${lang.image}`);
   try {
-    execSync(
-      `docker run --rm \
-       -v ${volumePath}:/app \
-       -w /app \
-       ${lang.image} \
-       ${lang.compileCommand}`,
-      { stdio: "pipe" }
-    );
+    // Use execFile (no shell) to avoid injection via env or workspace path.
+    const args = [
+      'run', '--rm',
+      '--network', 'none',
+      '--security-opt', 'seccomp=default',
+      '--security-opt', 'no-new-privileges:true',
+      '--read-only',
+      '--tmpfs', '/tmp:size=64m',
+      '-v', `${volumePath}:/app`,
+      '-w', '/app',
+      lang.image,
+      ...lang.compileCommand.split(' '),
+    ];
+    execFileSync('docker', args, {
+      stdio: "pipe",
+      timeout: 30000,
+      killSignal: "SIGKILL",
+    });
     logger.debug(`[COMPILER] Compilation successful`);
   } catch (err: any) {
     const stderr = err.stderr?.toString();
@@ -42,4 +52,3 @@ export function compile(
     );
   }
 }
-

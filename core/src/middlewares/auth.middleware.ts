@@ -14,8 +14,15 @@ declare global {
     }
 }
 
-const JWT_SECRET = process.env.JWT_SECRET || 'JWT_SECRET';
-const INTERNAL_API_KEY = process.env.INTERNAL_API_KEY || 'INTERNAL_KEY';
+const JWT_SECRET = process.env.JWT_SECRET;
+const INTERNAL_API_KEY = process.env.INTERNAL_API_KEY;
+
+if (!JWT_SECRET || JWT_SECRET.length < 32) {
+    throw new Error('CRITICAL: JWT_SECRET environment variable must be set to a 32+ char secret');
+}
+if (!INTERNAL_API_KEY || INTERNAL_API_KEY.length < 16) {
+    throw new Error('CRITICAL: INTERNAL_API_KEY environment variable must be set to a 16+ char secret');
+}
 
 export const verifyToken = async (req: Request, res: Response, next: NextFunction) => {
     let token;
@@ -23,7 +30,6 @@ export const verifyToken = async (req: Request, res: Response, next: NextFunctio
     if (req.headers.authorization && req.headers.authorization.startsWith('Bearer ')) {
         token = req.headers.authorization.split(' ')[1];
     } else if (req.cookies && req.cookies.accessToken) {
-        console.log("I HIT THIS")
         token = req.cookies.accessToken;
     }
     if (!token) {
@@ -41,9 +47,15 @@ export const verifyToken = async (req: Request, res: Response, next: NextFunctio
 
 export const verifyInternalOrUser = async (req: Request, res: Response, next: NextFunction) => {
     const apiKey = req.headers['x-internal-api-key'];
-    console.log('API KEY: ', apiKey)
-    if (apiKey && apiKey === INTERNAL_API_KEY) {
-        return next();
+    // If the header is present, it MUST match the internal key exactly.
+    // A wrong key is treated as a forbidden attempt to impersonate a service,
+    // NOT as a request to fall through to user-JWT auth.
+    if (apiKey) {
+        if (apiKey === INTERNAL_API_KEY) {
+            req.user = { id: 'system', role: 'system' };
+            return next();
+        }
+        return next(new ForbiddenError('Invalid internal API key'));
     }
     return verifyToken(req, res, next);
 };
@@ -73,7 +85,9 @@ export const extractUser = async (req: Request, res: Response, next: NextFunctio
         req.user = decoded;
         next();
     } catch (error) {
-        // If token is present but invalid (expired/malformed), return 401 to trigger refresh
-        return next(new UnauthorizedError('Invalid token'));
+        // Public routes using extractUser must not reject requests with stale
+        // or invalid tokens — they should fall back to anonymous. The frontend
+        // refresh flow handles re-authentication for protected routes.
+        return next();
     }
 };

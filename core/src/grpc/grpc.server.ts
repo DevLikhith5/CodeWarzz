@@ -17,13 +17,12 @@
  */
 
 import path from 'path';
+import fs from 'fs';
 import * as grpc from '@grpc/grpc-js';
 import * as protoLoader from '@grpc/proto-loader';
 import { problemRepository } from '../repository/problem.repository';
 import { submissionRepository } from '../repository/submission.repository';
-import { userRepository } from '../repository/user.repository';
 import { withDistributedLock } from '../utils/distributedLock';
-import { appendEvent } from '../service/eventStore.service';
 import logger from '../config/logger.config';
 
 // ─── Proto loading ───────────────────────────────────────────────────────────
@@ -41,17 +40,48 @@ const packageDef = protoLoader.loadSync(PROTO_PATH, {
 const protoDescriptor = grpc.loadPackageDefinition(packageDef) as any;
 const codewarz = protoDescriptor.codewarz;
 
+// ─── TLS / Auth Configuration ────────────────────────────────────────────────
+
+const INTERNAL_API_KEY = process.env.INTERNAL_API_KEY;
+if (!INTERNAL_API_KEY || INTERNAL_API_KEY.length < 16) {
+    throw new Error('CRITICAL: INTERNAL_API_KEY must be set (16+ chars) for gRPC auth');
+}
+
+const TLS_KEY_PATH = process.env.GRPC_TLS_KEY_PATH;
+const TLS_CERT_PATH = process.env.GRPC_TLS_CERT_PATH;
+const USE_TLS = Boolean(TLS_KEY_PATH && TLS_CERT_PATH);
+
+if (process.env.NODE_ENV === 'production' && !USE_TLS) {
+    logger.warn('gRPC server is running INSECURE (no TLS). Set GRPC_TLS_KEY_PATH and GRPC_TLS_CERT_PATH in production.');
+}
+
+// ─── Auth Interceptor ────────────────────────────────────────────────────────
+
+function authenticateInternalCall(metadata: grpc.Metadata): boolean {
+    const apiKey = metadata.get('x-internal-api-key');
+    if (apiKey.length === 0) return false;
+    return apiKey[0] === INTERNAL_API_KEY;
+}
+
 // ─── ProblemService handlers ─────────────────────────────────────────────────
 
 async function getProblem(
     call: grpc.ServerUnaryCall<any, any>,
     callback: grpc.sendUnaryData<any>,
 ) {
-    const { problemId } = call.request;
     const metadata = call.metadata.getMap();
     const correlationId = metadata['x-correlation-id'] || 'unknown';
 
+    if (!authenticateInternalCall(call.metadata)) {
+        logger.warn('gRPC GetProblem: unauthorized', { correlationId });
+        return callback({
+            code: grpc.status.UNAUTHENTICATED,
+            message: 'Missing or invalid x-internal-api-key',
+        });
+    }
+
     try {
+        const { problemId } = call.request;
         const problem = await problemRepository.getProblemById(problemId);
         if (!problem) {
             logger.warn(`Problem ${problemId} not found via gRPC`, { correlationId });
@@ -68,7 +98,7 @@ async function getProblem(
         }));
 
         logger.info(`Served problem via gRPC`, { problemId, correlationId });
-        
+
         callback(null, {
             problemId: problem.id,
             timeLimitMs: (problem as any).timeLimitMs ?? 2000,
@@ -89,6 +119,15 @@ async function persistVerdict(
     call: grpc.ServerUnaryCall<any, any>,
     callback: grpc.sendUnaryData<any>,
 ) {
+    if (!authenticateInternalCall(call.metadata)) {
+        const correlationId = call.metadata.getMap()['x-correlation-id'] || 'unknown';
+        logger.warn('gRPC PersistVerdict: unauthorized', { correlationId });
+        return callback({
+            code: grpc.status.UNAUTHENTICATED,
+            message: 'Missing or invalid x-internal-api-key',
+        });
+    }
+
     const req = call.request;
     const submissionId: string = req.submissionId;
     const metadata = call.metadata.getMap();
@@ -107,33 +146,28 @@ async function persistVerdict(
             errorMessage: req.errorMessage ?? '',
         };
 
-        // Increment solved-count under distributed lock (same logic as REST handler)
+        // The submission service is now transactional: DB update + solved-count
+        // increment + event append all commit atomically. The distributed
+        // lock prevents double-increment when REST PATCH and gRPC arrive
+        // concurrently for the same (userId, problemId).
         if (req.verdict === 'AC') {
             const submission = await submissionRepository.getSubmissionById(submissionId);
             if (submission?.userId) {
                 await withDistributedLock(
                     `solved-count:${submission.userId}:${submission.problemId}`,
                     async () => {
-                        const best = await submissionRepository.getBestSubmission(
-                            submission.userId,
-                            submission.problemId,
-                        );
-                        if (!best) {
-                            await userRepository.incrementSolvedCount(submission.userId);
-                        }
+                        const { submissionService } = await import('../service/submission.service');
+                        await submissionService.updateSubmission(submissionId, updateData);
                     },
                     5000,
                 );
+                callback(null, { success: true, message: 'Verdict persisted' });
+                return;
             }
         }
 
-        await submissionRepository.updateSubmission(submissionId, updateData);
-
-        await appendEvent('submission', submissionId, 'SUBMISSION_COMPLETED', {
-            verdict: req.verdict,
-            score: req.score,
-            timeTakenMs: Number(req.timeTakenMs),
-        });
+        const { submissionService } = await import('../service/submission.service');
+        await submissionService.updateSubmission(submissionId, updateData);
 
         logger.info('gRPC PersistVerdict success', { submissionId, verdict: req.verdict, correlationId });
         callback(null, { success: true, message: 'Verdict persisted' });
@@ -152,7 +186,25 @@ export function startGRPCServer(port: number | string = 50051): grpc.Server {
     server.addService(codewarz.SubmissionService.service, { persistVerdict });
 
     const addr = `0.0.0.0:${port}`;
-    server.bindAsync(addr, grpc.ServerCredentials.createInsecure(), (err, boundPort) => {
+
+    let credentials: grpc.ServerCredentials;
+    if (USE_TLS) {
+        try {
+            const key = fs.readFileSync(TLS_KEY_PATH!);
+            const cert = fs.readFileSync(TLS_CERT_PATH!);
+            credentials = grpc.ServerCredentials.createSsl(null, [
+                { private_key: key, cert_chain: cert },
+            ]);
+            logger.info('gRPC server: TLS enabled');
+        } catch (err: any) {
+            logger.error('Failed to read TLS certs, falling back to insecure', { error: err.message });
+            credentials = grpc.ServerCredentials.createInsecure();
+        }
+    } else {
+        credentials = grpc.ServerCredentials.createInsecure();
+    }
+
+    server.bindAsync(addr, credentials, (err, boundPort) => {
         if (err) {
             logger.error('Failed to bind gRPC server', { error: err.message, addr });
             return;

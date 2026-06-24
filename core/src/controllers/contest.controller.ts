@@ -1,4 +1,4 @@
-import { Request, Response } from "express";
+import { Request, Response, NextFunction } from "express";
 import { contestService } from "../service/contest.service";
 import { StatusCodes } from "http-status-codes";
 
@@ -6,7 +6,7 @@ import { successResponse } from "../utils/response";
 import logger from "../config/logger.config";
 import { metricsService } from "../service/metrics.service";
 
-export const createContest = async (req: Request, res: Response) => {
+export const createContest = async (req: Request, res: Response, next: NextFunction) => {
     try {
         const contest = await contestService.createContest({
             ...req.body,
@@ -17,27 +17,26 @@ export const createContest = async (req: Request, res: Response) => {
         successResponse(res, contest, "Contest created successfully", StatusCodes.CREATED);
     } catch (error) {
         metricsService.getContestEventsTotal().inc({ event: 'create_contest', status: 'failure' });
-        res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ error: (error as Error).message });
+        next(error);
     }
 };
 
-export const getContest = async (req: Request, res: Response) => {
+export const getContest = async (req: Request, res: Response, next: NextFunction) => {
     try {
         const userId = req.user?.id;
         const contest = await contestService.getContest(req.params.id, userId);
         if (!contest) {
-            res.status(StatusCodes.NOT_FOUND).json({ error: "Contest not found" });
-            return;
+            return next(new (require('../utils/errors/app.error').NotFoundError)("Contest not found"));
         }
         metricsService.getContestEventsTotal().inc({ event: 'get_contest', status: 'success' });
         successResponse(res, contest);
     } catch (error) {
         metricsService.getContestEventsTotal().inc({ event: 'get_contest', status: 'failure' });
-        res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ error: (error as Error).message });
+        next(error);
     }
 };
 
-export const getAllContests = async (req: Request, res: Response) => {
+export const getAllContests = async (req: Request, res: Response, next: NextFunction) => {
     try {
         const userId = req.user?.id;
         const { status, registered, participated } = req.query as { status?: string, registered?: string, participated?: string };
@@ -46,25 +45,24 @@ export const getAllContests = async (req: Request, res: Response) => {
         successResponse(res, contests);
     } catch (error) {
         metricsService.getContestEventsTotal().inc({ event: 'list_contests', status: 'failure' });
-        res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ error: (error as Error).message });
+        next(error);
     }
 };
 
-export const addProblemToContest = async (req: Request, res: Response) => {
-
+export const addProblemToContest = async (req: Request, res: Response, next: NextFunction) => {
     try {
         const { contestId, problemId } = req.body;
-        logger.info("INSIDE CONTEST CONTROLLER LAYER: ", { contestId, problemId });
+        logger.info("Adding problem to contest", { contestId, problemId });
         await contestService.addProblemToContest(contestId, problemId);
         metricsService.getContestEventsTotal().inc({ event: 'add_problem', status: 'success' });
         successResponse(res, null, "Problem added to contest");
     } catch (error) {
         metricsService.getContestEventsTotal().inc({ event: 'add_problem', status: 'failure' });
-        res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ error: (error as Error).message });
+        next(error);
     }
 };
 
-export const registerForContest = async (req: Request, res: Response) => {
+export const registerForContest = async (req: Request, res: Response, next: NextFunction) => {
     try {
         const contestId = req.params.id;
         const userId = req.user?.id;
@@ -73,11 +71,11 @@ export const registerForContest = async (req: Request, res: Response) => {
         successResponse(res, null, "Registered successfully");
     } catch (error) {
         metricsService.getContestEventsTotal().inc({ event: 'register', status: 'failure' });
-        res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ error: (error as Error).message });
+        next(error);
     }
 };
 
-export const deregisterForContest = async (req: Request, res: Response) => {
+export const deregisterForContest = async (req: Request, res: Response, next: NextFunction) => {
     try {
         const contestId = req.params.id;
         const userId = req.user?.id;
@@ -86,11 +84,11 @@ export const deregisterForContest = async (req: Request, res: Response) => {
         successResponse(res, null, "Deregistered successfully");
     } catch (error) {
         metricsService.getContestEventsTotal().inc({ event: 'deregister', status: 'failure' });
-        res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ error: (error as Error).message });
+        next(error);
     }
 };
 
-export const getContestProblems = async (req: Request, res: Response) => {
+export const getContestProblems = async (req: Request, res: Response, next: NextFunction) => {
     try {
         const contestId = req.params.id;
         const userId = req.user?.id;
@@ -99,11 +97,11 @@ export const getContestProblems = async (req: Request, res: Response) => {
         successResponse(res, problems);
     } catch (error) {
         metricsService.getContestEventsTotal().inc({ event: 'view_problems', status: 'failure' });
-        res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ error: (error as Error).message });
+        next(error);
     }
 };
 
-export const getContestLeaderboard = async (req: Request, res: Response) => {
+export const getContestLeaderboard = async (req: Request, res: Response, next: NextFunction) => {
     try {
         const contestId = req.params.id;
         const leaderboard = await contestService.getContestLeaderboard(contestId);
@@ -111,6 +109,6 @@ export const getContestLeaderboard = async (req: Request, res: Response) => {
         successResponse(res, leaderboard);
     } catch (error) {
         metricsService.getContestEventsTotal().inc({ event: 'view_leaderboard', status: 'failure' });
-        res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ error: (error as Error).message });
+        next(error);
     }
 };

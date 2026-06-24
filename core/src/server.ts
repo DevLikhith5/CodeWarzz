@@ -5,14 +5,13 @@ import v1Router from './routers/v1/index.router';
 import v2Router from './routers/v2/index.router';
 import { appErrorHandler, genericErrorHandler } from './middlewares/error.middleware';
 import logger from './config/logger.config';
-import { initTracing } from './tracing';
+import { initTracing, shutdownTracing } from './tracing';
+import { installProcessSafetyNet, gracefulShutdown } from './utils/bootstrap';
 
+installProcessSafetyNet('core');
 initTracing();
 
 const app = express();
-
-
-
 
 import morgan from 'morgan';
 
@@ -30,25 +29,16 @@ app.use(cookieParser());
 
 import { metricsMiddleware } from './middlewares/metrics.middleware';
 
-/**
- * Registering all the routers and their corresponding routes with out app server object.
- */
-
 import { correlationIdMiddleware } from './middlewares/correlation.middleware';
 
 app.use(correlationIdMiddleware);
 app.use(metricsMiddleware);
+app.use(require('./middlewares/csrf.middleware').csrfProtection);
 app.use('/api/v1', v1Router);
 app.use('/api/v2', v2Router);
 
-
-/**
- * Add the error handler middleware
- */
-
 app.use(appErrorHandler);
 app.use(genericErrorHandler);
-
 
 import { metricsService } from './service/metrics.service';
 
@@ -57,7 +47,7 @@ app.get("/metrics", async (req, res) => {
     res.end(await metricsService.getRegistry().metrics());
 });
 
-import { getAllCircuitBreakers } from './utils/circuitBreaker';
+import { getAllCircuitBreakers, shutdownCircuitBreakers } from './utils/circuitBreaker';
 
 app.get("/health/circuit-breakers", (req, res) => {
     const breakers = getAllCircuitBreakers().map(b => b.getMetrics());
@@ -66,7 +56,6 @@ app.get("/health/circuit-breakers", (req, res) => {
 
 import { getOutboxStats } from './service/outbox.service';
 
-
 app.get("/health/outbox", async (req, res) => {
     const stats = await getOutboxStats();
     res.json({ success: true, data: stats });
@@ -74,9 +63,14 @@ app.get("/health/outbox", async (req, res) => {
 
 import { queueMonitorService } from './service/queueMonitor.service';
 import { setupRabbitMQTopology } from './queues/rabbitmq';
+import { rabbitMQ } from './queues/rabbitmq/connection';
 import { startPlagiarismConsumer } from './queues/plagiarism/consumer.queue';
 import { backpressureMonitor } from './service/backpressure.service';
 import { hydrateBloomFilters } from './service/bloom.service';
+import { redis } from './config/redis.config';
+
+let httpServer: any;
+let grpcServer: any;
 
 async function startServer() {
     try {
@@ -89,28 +83,47 @@ async function startServer() {
 
     startPlagiarismConsumer();
 
-    // ── Hydrate Bloom Filters to protect Gateway from malicious load ──
     await hydrateBloomFilters();
 
-    // ── gRPC server (replaces REST for internal evaluation-service-go calls) ─
     const { startGRPCServer } = await import('./grpc/grpc.server');
     const GRPC_PORT = process.env.CORE_GRPC_PORT || 50051;
-    startGRPCServer(GRPC_PORT);
+    grpcServer = startGRPCServer(GRPC_PORT);
     logger.info(`Core gRPC server started on port ${GRPC_PORT}`);
 
-    // ── Zero-Polling Change Data Capture (CDC) ──
-    const { initializeCDC, startCDCListener } = await import('./service/outbox.service');
+    const { initializeCDC, startCDCListener, startOutboxPoller, stopCDCListener } = await import('./service/outbox.service');
     await initializeCDC();
     await startCDCListener();
+    startOutboxPoller();
 
     backpressureMonitor.startMonitoring(['submission-queue', 'verdict-queue', 'plagiarism-queue']);
 
-    app.listen(serverConfig.PORT, () => {
+    httpServer = app.listen(serverConfig.PORT, () => {
         logger.info(`Server is running on http://localhost:${serverConfig.PORT}`);
         queueMonitorService.startMonitoring();
-        logger.info("SERVER RESTARTED - LOGGING VERIFIED");
         logger.info(`Press Ctrl+C to stop the server.`);
     });
+
+    // Graceful shutdown
+    const shutdown = (signal: string) =>
+        gracefulShutdown(
+            'core',
+            signal,
+            [httpServer],
+            [
+                () => grpcServer?.tryShutdown(() => undefined),
+                () => queueMonitorService.stopMonitoring(),
+                () => rabbitMQ.close(),
+                () => stopCDCListener(),
+                () => shutdownCircuitBreakers(),
+                () => (redis ? redis.quit() : undefined),
+                () => shutdownTracing(),
+            ]
+        );
+    process.on('SIGTERM', () => void shutdown('SIGTERM'));
+    process.on('SIGINT', () => void shutdown('SIGINT'));
 }
 
-startServer();
+startServer().catch((err) => {
+    logger.error('Failed to start server', { error: err.message });
+    process.exit(1);
+});

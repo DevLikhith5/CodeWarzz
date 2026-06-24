@@ -1,6 +1,6 @@
 import db from '../config/db';
 import { submissionEvents, contestEvents, userEvents, problemEvents } from '../db/schema/events';
-import { eq, asc } from 'drizzle-orm';
+import { eq, desc } from 'drizzle-orm';
 import logger from '../config/logger.config';
 import { publishEvent } from '../queues/rabbitmq';
 
@@ -24,6 +24,8 @@ const ENTITY_ID_KEYS: Record<EventEntity, any> = {
     problem: problemEvents.problemId,
 };
 
+const MAX_APPEND_RETRIES = 5;
+
 export async function appendEvent(
     entity: EventEntity,
     entityId: string,
@@ -31,33 +33,59 @@ export async function appendEvent(
     payload: EventPayload
 ): Promise<void> {
     const table = EVENT_TABLES[entity];
-    const existingEvents = await db
-        .select({ version: table.version })
-        .from(table)
-        .where(eq(ENTITY_ID_KEYS[entity], entityId))
-        .orderBy(table.version)
-        .limit(1);
+    const entityKey = ENTITY_ID_KEYS[entity];
 
-    const lastVersion = existingEvents.length > 0 ? existingEvents[0].version : 0;
-    const nextVersion = lastVersion + 1;
+    // Retry loop to handle the read-modify-write race. If two writers read
+    // the same lastVersion, both will compute the same nextVersion; the
+    // UNIQUE (entityId, version) constraint will reject one of them, and
+    // we re-read and retry. This preserves event ordering without losing events.
+    for (let attempt = 1; attempt <= MAX_APPEND_RETRIES; attempt++) {
+        const existingEvents = await db
+            .select({ version: table.version })
+            .from(table)
+            .where(eq(entityKey, entityId))
+            .orderBy(desc(table.version))
+            .limit(1);
 
-    await db.insert(table).values({
-        [`${entity}Id`]: entityId,
-        eventType,
-        payload,
-        version: nextVersion,
-    });
+        const lastVersion = existingEvents.length > 0 ? existingEvents[0].version : 0;
+        const nextVersion = lastVersion + 1;
 
-    await publishEvent({
-        entity,
-        entityId,
-        eventType,
-        payload,
-        version: nextVersion,
-        timestamp: new Date().toISOString(),
-    });
+        try {
+            await db.insert(table).values({
+                [`${entity}Id`]: entityId,
+                eventType,
+                payload,
+                version: nextVersion,
+            });
 
-    logger.debug(`Event appended: ${entity}.${eventType} v${nextVersion}`, { entityId });
+            await publishEvent({
+                entity,
+                entityId,
+                eventType,
+                payload,
+                version: nextVersion,
+                timestamp: new Date().toISOString(),
+            });
+
+            logger.debug(`Event appended: ${entity}.${eventType} v${nextVersion}`, { entityId });
+            return;
+        } catch (err: any) {
+            // 23505 = unique_violation in PostgreSQL
+            const isUniqueViolation =
+                err?.code === '23505' ||
+                err?.cause?.code === '23505' ||
+                (typeof err?.message === 'string' && err.message.includes('duplicate key value'));
+            if (isUniqueViolation && attempt < MAX_APPEND_RETRIES) {
+                logger.debug(`Event version collision, retrying`, {
+                    entity, entityId, attempt, nextVersion,
+                });
+                continue;
+            }
+            throw err;
+        }
+    }
+
+    throw new Error(`appendEvent: exceeded ${MAX_APPEND_RETRIES} retries for ${entity} ${entityId}`);
 }
 
 export async function getEventStream(entity: EventEntity, entityId: string): Promise<any[]> {
@@ -67,7 +95,7 @@ export async function getEventStream(entity: EventEntity, entityId: string): Pro
         .select()
         .from(table)
         .where(eq(ENTITY_ID_KEYS[entity], entityId))
-        .orderBy(asc(table.version));
+        .orderBy(table.version);
 
     return events.map((e) => ({
         id: e.id,
@@ -85,7 +113,7 @@ export async function getLatestVersion(entity: EventEntity, entityId: string): P
         .select({ version: table.version })
         .from(table)
         .where(eq(ENTITY_ID_KEYS[entity], entityId))
-        .orderBy(table.version)
+        .orderBy(desc(table.version))
         .limit(1);
 
     return result.length > 0 ? result[0].version : 0;

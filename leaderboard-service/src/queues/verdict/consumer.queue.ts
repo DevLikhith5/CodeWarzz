@@ -5,14 +5,14 @@ import { metricsService } from "../../../../core/src/service/metrics.service";
 import { withDistributedLock } from '../../../../core/src/utils/distributedLock';
 import { isIdempotent, markProcessed } from '../../../../core/src/middlewares/idempotency.middleware';
 
-export const startVerdictConsumer = () => {
+export const startVerdictConsumer = async () => {
     logger.info("Starting RabbitMQ verdict consumer...");
 
     const handler: MessageHandler = async (data: any, correlationId: string) => {
         const end = metricsService.getJobProcessingDuration().startTimer({ queue_name: 'verdict-queue', job_name: 'update_leaderboard' });
 
         try {
-            const { contestId, userId, score, contestEndTime, submissionId } = data;
+            const { contestId, userId, score, contestEndTime, submissionId, timeTakenInMs } = data;
             if (!contestId || !userId || score === undefined) {
                 throw new Error("Invalid job data");
             }
@@ -30,7 +30,13 @@ export const startVerdictConsumer = () => {
             await withDistributedLock(
                 `leaderboard:${contestId}:${userId}`,
                 async () => {
-                    const response = await updateLeaderboard({ contestId, userId, score, timeTakenInMs: 0, contestEndTime });
+                    const response = await updateLeaderboard({
+                        contestId,
+                        userId,
+                        score: Number(score),
+                        timeTakenInMs: Number(timeTakenInMs) || 0,
+                        contestEndTime,
+                    });
                     logger.info("Response from the updateLeaderboard: ", { response });
                 },
                 10000
@@ -45,11 +51,15 @@ export const startVerdictConsumer = () => {
         }
     };
 
-    consumeVerdictQueue(handler, {
-        prefetch: 10,
-        maxRetries: 3,
-        retryDelayMs: 1000,
-    });
-
-    logger.info("RabbitMQ verdict consumer started successfully.");
+    try {
+        await consumeVerdictQueue(handler, {
+            prefetch: 10,
+            maxRetries: 3,
+            retryDelayMs: 1000,
+        });
+        logger.info("RabbitMQ verdict consumer started successfully.");
+    } catch (err: any) {
+        logger.error("Failed to start verdict consumer", { error: err.message });
+        throw err;
+    }
 };

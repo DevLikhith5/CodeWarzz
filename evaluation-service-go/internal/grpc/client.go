@@ -7,7 +7,9 @@ package grpcclient
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
+	"os"
 	"time"
 
 	"evaluation-service-go/internal/grpc/pb"
@@ -15,16 +17,19 @@ import (
 
 	"github.com/sony/gobreaker"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/keepalive"
 	"google.golang.org/grpc/metadata"
 )
 
 const (
-	defaultTimeout       = 5 * time.Second
-	keepAliveTime        = 30 * time.Second
-	keepAliveTimeout     = 10 * time.Second
+	defaultTimeout   = 5 * time.Second
+	keepAliveTime    = 30 * time.Second
+	keepAliveTimeout = 10 * time.Second
 )
+
+var internalAPIKey = os.Getenv("INTERNAL_API_KEY")
 
 var cb *gobreaker.CircuitBreaker
 
@@ -42,16 +47,33 @@ func init() {
 
 // traceAndCircuitBreakerInterceptor propagates x-correlation-id and applies the circuit breaker
 func traceAndCircuitBreakerInterceptor() grpc.UnaryClientInterceptor {
-	return func(ctx context.Context, method string, req, reply interface{}, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
+	return func(ctx context.Context, method string, req, reply interface{}, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) (err error) {
 		if correlationID, ok := ctx.Value("correlation-id").(string); ok {
 			ctx = metadata.AppendToOutgoingContext(ctx, "x-correlation-id", correlationID)
 		}
-		
+		if internalAPIKey != "" {
+			ctx = metadata.AppendToOutgoingContext(ctx, "x-internal-api-key", internalAPIKey)
+		}
+
+		// A panic inside the gRPC stack or the circuit breaker would
+		// otherwise propagate up the goroutine that called the RPC and
+		// crash the whole worker. Recover here and surface as a normal
+		// error so the message goes to DLQ via the caller's nack path.
+		defer func() {
+			if r := recover(); r != nil {
+				logger.Error("Recovered from panic in gRPC interceptor",
+					"method", method,
+					"panic", fmt.Sprintf("%v", r),
+				)
+				err = fmt.Errorf("gRPC interceptor panic on %s: %v", method, r)
+			}
+		}()
+
 		start := time.Now()
-		_, err := cb.Execute(func() (interface{}, error) {
+		_, err = cb.Execute(func() (interface{}, error) {
 			return nil, invoker(ctx, method, req, reply, cc, opts...)
 		})
-		
+
 		if err != nil {
 			logger.Error("gRPC call failed (Circuit Breaker Tripped/Error)", "method", method, "error", err, "duration", time.Since(start))
 		}
@@ -61,8 +83,17 @@ func traceAndCircuitBreakerInterceptor() grpc.UnaryClientInterceptor {
 
 // dialOptions returns shared, production-hardened gRPC dial options.
 func dialOptions() []grpc.DialOption {
+	useTLS := os.Getenv("GRPC_TLS_ENABLED") == "true"
+
+	var creds credentials.TransportCredentials
+	if useTLS {
+		creds = credentials.NewTLS(&tls.Config{InsecureSkipVerify: os.Getenv("GRPC_TLS_SKIP_VERIFY") == "true"})
+	} else {
+		creds = insecure.NewCredentials()
+	}
+
 	return []grpc.DialOption{
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithTransportCredentials(creds),
 		grpc.WithKeepaliveParams(keepalive.ClientParameters{
 			Time:                keepAliveTime,
 			Timeout:             keepAliveTimeout,

@@ -46,7 +46,6 @@ export const signIn = async (req: Request, res: Response, next: NextFunction) =>
 export const refreshToken = async (req: Request, res: Response, next: NextFunction) => {
     try {
         const { refreshToken } = req.cookies;
-        console.log(refreshToken)
         logger.info('RefreshToken request received');
 
         if (!refreshToken) {
@@ -74,9 +73,6 @@ export const googleCallBack = async (req: Request, res: Response, next: NextFunc
         const { code, state } = req.query as { code: string, state: string };
         const savedState = StateHelper.getStateCookie(req);
 
-        console.log("state", state);
-        console.log("savedState", savedState);
-
         if (!state || !savedState || state !== savedState) {
             logger.error('Invalid state parameter in Google callback');
             metricsService.getAuthEventsTotal().inc({ event: 'google_signin', status: 'failure_state_mismatch' });
@@ -84,7 +80,6 @@ export const googleCallBack = async (req: Request, res: Response, next: NextFunc
             return;
         }
 
-        ``
         res.clearCookie('state');
 
         logger.info('Google callback request received', { code });
@@ -93,10 +88,7 @@ export const googleCallBack = async (req: Request, res: Response, next: NextFunc
 
         metricsService.getAuthEventsTotal().inc({ event: 'google_signin', status: 'success' });
 
-
-
         setAuthCookies(res, accessToken, refreshToken);
-
 
         const frontendCallbackUrl = process.env.FRONTEND_URL
             ? `${process.env.FRONTEND_URL}/auth/callback`
@@ -117,7 +109,7 @@ export const googleSignin = async (req: Request, res: Response, next: NextFuncti
         const redirect_uri = process.env.GOOGLE_REDIRECT_URI;
         const scope = 'email profile openid';
 
-        const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?response_type=${response_type}&client_id=${client_id}&redirect_uri=${redirect_uri}&scope=${scope}&state=${state}`;
+        const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?response_type=${encodeURIComponent(response_type)}&client_id=${encodeURIComponent(client_id || '')}&redirect_uri=${encodeURIComponent(redirect_uri || '')}&scope=${encodeURIComponent(scope)}&state=${encodeURIComponent(state)}`;
 
         res.redirect(authUrl);
     } catch (error) {

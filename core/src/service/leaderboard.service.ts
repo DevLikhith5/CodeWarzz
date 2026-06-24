@@ -1,4 +1,5 @@
 import { leaderboardRepository } from "../repository/leaderboard.repository";
+import logger from "../config/logger.config";
 
 const MAX_PENALTY_MINS = 100000;
 
@@ -15,7 +16,15 @@ export class LeaderboardService {
             const snapshots = [];
             for (let i = 0; i < data.length; i += 2) {
                 const userId = data[i];
-                const rawScore = Number(data[i + 1]);
+                const rawScoreStr = data[i + 1];
+                if (rawScoreStr === undefined) {
+                    // ZRANGE WITHSCORES always returns pairs, but a corrupt
+                    // key or empty trailing element would produce undefined.
+                    // Skip the orphan to avoid NaN propagating into the DB.
+                    continue;
+                }
+                const rawScore = Number(rawScoreStr);
+                if (isNaN(rawScore)) continue;
                 const points = Math.floor(rawScore);
                 const penaltyMinutes = Math.round((MAX_PENALTY_MINS - (rawScore - points) * MAX_PENALTY_MINS));
                 const rank = (i / 2) + 1;
@@ -33,8 +42,8 @@ export class LeaderboardService {
             if (snapshots.length > 0) {
                 try {
                     await leaderboardRepository.saveSnapshots(snapshots);
-                } catch (err) {
-                    console.error(`Failed to save snapshots for contest ${contest.id}:`, err);
+                } catch (err: any) {
+                    logger.error(`Failed to save snapshots for contest ${contest.id}`, { error: err.message });
                 }
             }
         }

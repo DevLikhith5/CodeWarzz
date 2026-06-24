@@ -9,7 +9,14 @@ import logger from './config/logger.config';
 import { correlationIdMiddleware } from '../../core/src/middlewares/correlation.middleware';
 import { metricsService } from '../../core/src/service/metrics.service';
 import { initTracing } from '../../core/src/tracing';
+import { setupRabbitMQTopology } from '../../core/src/queues/rabbitmq';
+import { rabbitMQ } from '../../core/src/queues/rabbitmq/connection';
+import { startSubmissionConsumer } from './queues/submission/consumer.queue';
+import { setupSnapshotCron, stopSnapshotCron } from './cron/leaderboardSnapshot.cron';
+import { getRedisConnObject } from './config/redis.config';
+import { installProcessSafetyNet, gracefulShutdown } from '../../core/src/utils/bootstrap';
 
+installProcessSafetyNet('evaluation-service');
 initTracing();
 
 const app = express();
@@ -29,21 +36,15 @@ app.use(metricsMiddleware);
 app.use('/api/v1', v1Router);
 app.use('/api/v2', v2Router);
 
-
-
-
 app.use(appErrorHandler);
 app.use(genericErrorHandler);
-
-import { setupRabbitMQTopology } from '../../core/src/queues/rabbitmq';
-import { startSubmissionConsumer } from './queues/submission/consumer.queue';
-import { setupSnapshotCron } from './cron/leaderboardSnapshot.cron';
 
 app.get("/metrics", async (req, res) => {
     res.set('Content-Type', metricsService.getRegistry().contentType);
     res.end(await metricsService.getRegistry().metrics());
 });
 
+let httpServer: any;
 
 async function startServer() {
     try {
@@ -54,13 +55,34 @@ async function startServer() {
         process.exit(1);
     }
 
-    startSubmissionConsumer();
-    setupSnapshotCron();
+    await startSubmissionConsumer();
+    await setupSnapshotCron();
 
-    app.listen(serverConfig.PORT, async () => {
+    httpServer = app.listen(serverConfig.PORT, () => {
         logger.info(`Server is running on http://localhost:${serverConfig.PORT}`);
         logger.info(`Press Ctrl+C to stop the server.`);
     });
+
+    // Graceful shutdown
+    const shutdown = (signal: string) =>
+        gracefulShutdown(
+            'evaluation-service',
+            signal,
+            [httpServer],
+            [
+                () => stopSnapshotCron(),
+                () => rabbitMQ.close(),
+                () => {
+                    const redis = getRedisConnObject();
+                    return redis ? redis.quit() : undefined;
+                },
+            ]
+        );
+    process.on('SIGTERM', () => void shutdown('SIGTERM'));
+    process.on('SIGINT', () => void shutdown('SIGINT'));
 }
 
-startServer();
+startServer().catch((err) => {
+    logger.error('Failed to start server', { error: err.message });
+    process.exit(1);
+});

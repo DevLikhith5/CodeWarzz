@@ -38,10 +38,7 @@ jobs:
         uses: actions/checkout@v3
 
       - name: Set up Docker Buildx
-        uses: actions/setup-qemu-action@v2
-        
-      - name: Set up Docker Build
-        uses: actions/setup-buildx-action@v2
+        uses: docker/setup-buildx-action@v3
 
       - name: Build Core Microservice
         uses: docker/build-push-action@v4
@@ -63,6 +60,16 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      - name: Build Node Evaluation Service
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          file: ./evaluation-service/Dockerfile
+          push: false
+          tags: codewarz/evaluation-service:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
       - name: Build Leaderboard Service
         uses: docker/build-push-action@v4
         with:
@@ -80,5 +87,15 @@ jobs:
           file: ./api-gateway/Dockerfile
           push: false
           tags: codewarz/api-gateway:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build Web Frontend
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          file: ./web/Dockerfile
+          push: false
+          tags: codewarz/web:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max

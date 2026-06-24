@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from "express";
-import { redis } from "../config/redis.conifg";
+import { redis } from "../config/redis.config";
 import logger from "../config/logger.config";
 
 export const BLOOM_FILTER_SIZE = 100000;

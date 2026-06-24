@@ -9,135 +9,87 @@ export interface AppError extends Error {
     statusCode: number;
 }
 
-
 /**
  * Represents an internal server error.
- * Implements the `AppError` interface.
- *
- * @class InternalServerError
- * @implements {AppError}
+ * Extends Error to ensure `instanceof Error` checks and stack traces work correctly.
  */
-export class InternalServerError implements AppError {
-    statusCode: number;
-    message: string;
-    name: string;
+export class InternalServerError extends Error implements AppError {
+    statusCode: number = 500;
     constructor(message: string) {
-        this.statusCode = 500;
-        this.message = message;
+        super(message);
         this.name = "InternalServerError";
+        Object.setPrototypeOf(this, InternalServerError.prototype);
     }
 }
 
 /**
  * Represents a Bad Request error (HTTP 400).
- * This error is typically used to indicate that the server cannot process the request
- * due to client-side issues such as invalid input or malformed request syntax.
- *
- * @class BadRequestError
- * @implements {AppError}
  */
-export class BadRequestError implements AppError {
-    statusCode: number;
-    message: string;
-    name: string;
+export class BadRequestError extends Error implements AppError {
+    statusCode: number = 400;
     constructor(message: string) {
-        this.statusCode = 400;
-        this.message = message;
+        super(message);
         this.name = "BadRequestError";
+        Object.setPrototypeOf(this, BadRequestError.prototype);
     }
 }
 
 /**
- * Represents a "Not Found" error.
- * Implements the `AppError` interface.
- * This error is typically used to indicate that a requested resource could not be found.
- *
- * @class NotFoundError
- * @implements {AppError}
+ * Represents a "Not Found" error (HTTP 404).
  */
-export class NotFoundError implements AppError {
-    statusCode: number;
-    message: string;
-    name: string;
+export class NotFoundError extends Error implements AppError {
+    statusCode: number = 404;
     constructor(message: string) {
-        this.statusCode = 404;
-        this.message = message;
+        super(message);
         this.name = "NotFoundError";
+        Object.setPrototypeOf(this, NotFoundError.prototype);
     }
 }
 
 /**
  * Represents an Unauthorized error (HTTP 401).
- * This error is typically used to indicate that the request requires user authentication.
- * 
- * @class UnauthorizedError
- * @implements {AppError}
  */
-export class UnauthorizedError implements AppError {
-    statusCode: number;
-    message: string;
-    name: string;
+export class UnauthorizedError extends Error implements AppError {
+    statusCode: number = 401;
     constructor(message: string) {
-        this.statusCode = 401;
-        this.message = message;
+        super(message);
         this.name = "UnauthorizedError";
+        Object.setPrototypeOf(this, UnauthorizedError.prototype);
     }
 }
 
-
 /**
  * Represents a Forbidden error (HTTP 403).
- * This error is typically used to indicate that the server understands the request
- * but refuses to authorize it.
- * 
- * @class ForbiddenError
- * @implements {AppError}
  */
-export class ForbiddenError implements AppError {
-    statusCode: number;
-    message: string;
-    name: string;
+export class ForbiddenError extends Error implements AppError {
+    statusCode: number = 403;
     constructor(message: string) {
-        this.statusCode = 403;
-        this.message = message;
+        super(message);
         this.name = "ForbiddenError";
+        Object.setPrototypeOf(this, ForbiddenError.prototype);
     }
 }
 
 /**
  * Represents a Conflict error (HTTP 409).
- * This error is typically used to indicate that the request could not be completed
- * due to a conflict with the current state of the target resource.
- * 
- * @class ConflictError
- * @implements {AppError}
  */
-export class ConflictError implements AppError {
-    statusCode: number;
-    message: string;
-    name: string;
+export class ConflictError extends Error implements AppError {
+    statusCode: number = 409;
     constructor(message: string) {
-        this.statusCode = 409;
-        this.message = message;
+        super(message);
         this.name = "ConflictError";
+        Object.setPrototypeOf(this, ConflictError.prototype);
     }
 }
 
 /**
- * Represents an error for unimplemented functionality.
- * This error is used to indicate that a certain feature or method
- * has not been implemented yet.
- *
- * @class NotImplementedError
- * @implements {AppError}
+ * Represents an error for unimplemented functionality (HTTP 501).
  */
-export class NotImplementedError implements AppError {
-    statusCode: number;
-    message: string;
-    name: string;
+export class NotImplementedError extends Error implements AppError {
+    statusCode: number = 501;
     constructor(message: string) {
-        this.statusCode = 501;
-        this.message = message;
+        super(message);
         this.name = "NotImplementedError";
+        Object.setPrototypeOf(this, NotImplementedError.prototype);
     }
 }

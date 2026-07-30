@@ -30,7 +30,7 @@ CodeWarz is a **microservices-based competitive coding platform** built entirely
 - **Drizzle ORM** — TypeScript-first SQL ORM with PostgreSQL
 - **Redis** — dual-purpose: BullMQ job broker AND application cache
 - **JWT + Google OAuth** — authentication via access/refresh token pair + social login
-- **Docker-in-Docker sandboxing** — code execution in disposable Docker containers
+- **Docker-out-of-Docker (DooD) sandboxing** — code execution in disposable sibling Docker containers via mounted `/var/run/docker.sock`
 - **Loki + Grafana + Prometheus** — centralized logging and metrics
 - **Token Bucket rate limiter** — Redis-backed with Lua scripting
 
@@ -435,7 +435,7 @@ The Evaluation Service (`evaluation-service/`, port 3003) handles code execution
 Evaluation Service (Express 5)
   ├── API layer (v1, v2 routers — health only)
   ├── BullMQ Worker: consumes "submission-queue"
-  │     └── Sandbox: Docker-in-Docker code execution
+  │     └── Sandbox: Docker-out-of-Docker (DooD) code execution
   ├── BullMQ Producer: pushes to "leaderboard-queue"
   ├── BullMQ Worker: "scheduler-queue" for cron snapshots
   └── Metrics + Logging (shared from core/)
@@ -613,7 +613,7 @@ Each execution container runs with:
 - **`--cpus Y`** — CPU limit per problem config
 - **`--pids-limit 64`** — prevent fork bombs
 - **`timeout`** — time limit (problem timeLimitMs + 2s grace)
-- **Docker-in-Docker** — the outer evaluation container mounts `temp_workspaces` from the host; inner code containers mount the same path
+- **Docker-out-of-Docker (DooD)** — the evaluation container mounts the host Docker socket to launch sibling containers; workspaces are bind-mounted from the host to both the outer and inner containers
 
 ### 10.4 Testcase Execution Strategy
 
@@ -629,11 +629,10 @@ Whitespace-insensitive comparison:
 4. Filter empty lines
 5. Compare line-by-line
 
-### 10.6 Docker-in-Docker Path Resolution
+### 10.6 DooD Path Resolution
 
 The `HOST_WORKSPACES_ROOT` environment variable is critical:
-- Inside Docker: resolves to the host machine's path to `temp_workspaces` (e.g., `/Users/cvlikhith/CodeWarz/temp_workspaces`)
-- The inner Docker container mounts this host path as `/app`
+- The outer evaluation container uses `HOST_WORKSPACES_ROOT` (e.g., `/Users/cvlikhith/CodeWarz/temp_workspaces`) so that sibling containers (launched via the mounted Docker socket) can mount the correct host path as `/app`
 - Locally: falls back to the internal path
 
 ---
@@ -834,7 +833,7 @@ Each service requires:
 3. **PostgreSQL + Drizzle**: Type-safe ORM with SQL-like querying; migrations via Drizzle Kit
 4. **BullMQ over RabbitMQ**: Redis-based queues for simplicity (no additional message broker)
 5. **Redis Sorted Sets for leaderboard**: Real-time ranking with O(log N) operations
-6. **Docker-in-Docker sandboxing**: Strong isolation without per-language custom runners; each language has a pre-built image
+6. **Docker-out-of-Docker (DooD) sandboxing**: Strong isolation by launching sibling containers via the host Docker socket; each language has a pre-built runner image
 7. **Token Bucket rate limiting via Redis Lua**: Atomic rate limiting without race conditions
 8. **No gRPC**: All inter-service communication is HTTP REST with JSON
 9. **Shared core modules**: Evaluation and Leaderboard services import middleware and utilities directly from `core/src/` via relative paths
